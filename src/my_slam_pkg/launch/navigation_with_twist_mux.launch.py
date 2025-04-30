@@ -13,6 +13,12 @@ def generate_launch_description():
         default_value='true',
         description='Use simulation (Gazebo) clock if true'
     )
+    
+    declare_cmd_vel_target = DeclareLaunchArgument(
+        'cmd_vel_target',
+        default_value='/cmd_vel',
+        description='Target topic for twist_mux cmd_vel_out remapping'
+    )
 
     # Package share directory
     pkg_share = FindPackageShare('my_slam_pkg').find('my_slam_pkg')
@@ -28,17 +34,13 @@ def generate_launch_description():
     )
     
     # Launch twist_mux
-    twist_mux_config = os.path.join(pkg_share, 'config', 'twist_mux.yaml')
-    
-    twist_mux_node = Node(
-        package='twist_mux',
-        executable='twist_mux',
-        name='twist_mux',
-        parameters=[twist_mux_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}],
-        remappings=[
-            ('/cmd_vel_out', '/cmd_vel')
-        ],
-        output='screen'
+    twist_mux = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(pkg_share, 'launch', 'twist_mux.launch.py')
+        ]),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time')
+        }.items()
     )
     
     # Include teleop.launch.py
@@ -53,7 +55,9 @@ def generate_launch_description():
     
     return LaunchDescription([
         declare_use_sim_time,
+        declare_cmd_vel_target,
         robot_gazebo_launch,
-        twist_mux_node,
+    
+        twist_mux,
         teleop_launch
     ])
