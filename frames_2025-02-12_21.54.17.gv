@@ -1,0 +1,14 @@
+digraph G {
+"odom" -> "base_footprint"[label=" Broadcaster: default_authority\nAverage rate: 50.2\nBuffer length: 5.0\nMost recent transform: 225.688\nOldest transform: 220.688\n"];
+"map" -> "odom"[label=" Broadcaster: default_authority\nAverage rate: 10.2\nBuffer length: 5.0\nMost recent transform: 225.847\nOldest transform: 220.847\n"];
+"base_footprint" -> "base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"base_link" -> "lidar_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"base_link" -> "front_left_wheel"[label=" Broadcaster: default_authority\nAverage rate: 30.2\nBuffer length: 5.0\nMost recent transform: 225.688\nOldest transform: 220.688\n"];
+"base_link" -> "front_right_wheel"[label=" Broadcaster: default_authority\nAverage rate: 30.2\nBuffer length: 5.0\nMost recent transform: 225.688\nOldest transform: 220.688\n"];
+"base_link" -> "rear_left_wheel"[label=" Broadcaster: default_authority\nAverage rate: 30.2\nBuffer length: 5.0\nMost recent transform: 225.688\nOldest transform: 220.688\n"];
+"base_link" -> "rear_right_wheel"[label=" Broadcaster: default_authority\nAverage rate: 30.2\nBuffer length: 5.0\nMost recent transform: 225.688\nOldest transform: 220.688\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1739390057.0205386"[ shape=plaintext ] ;
+}->"map";
+}
