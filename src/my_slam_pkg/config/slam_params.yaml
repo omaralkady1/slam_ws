@@ -1,7 +1,7 @@
 slam_toolbox:
   ros__parameters:
     # SLAM Mode
-    mode: localization
+    mode: mapping
     
     # Robot frame params
     base_frame: base_footprint
@@ -64,6 +64,4 @@ slam_toolbox:
     angle_variance_penalty: 0.8
 
 
-    map_file_name: /home/alkady/slam_ws/my_new_map
-    map_start_pose: [0.0, 0.0, 0.0]
-    map_start_at_dock: false
+    
