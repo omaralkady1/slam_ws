@@ -1,5 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
@@ -29,22 +30,17 @@ def generate_launch_description():
     )
     
     # ROBOT COMPONENTS
-    # Robot in Gazebo
-    robot_gazebo = ExecuteProcess(
-        cmd=['ros2', 'launch', 'my_slam_pkg', 'robot_gazebo.launch.py'],
-        output='screen'
+    # Robot in Gazebo with controllers
+    robot_gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(pkg_share, 'launch', 'robot_gazebo.launch.py')
+        ]),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time')
+        }.items()
     )
     
     # LOCALIZATION COMPONENTS
-    # Static transform publisher
-    static_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='static_tf_map_to_odom',
-        arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
-        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
-    )
-    
     # Map server
     map_server = Node(
         package='nav2_map_server',
@@ -86,7 +82,7 @@ def generate_launch_description():
             {'use_sim_time': LaunchConfiguration('use_sim_time')}
         ],
         remappings=[
-            ('cmd_vel', '/diff_drive_controller/cmd_vel_unstamped')
+            ('cmd_vel', '/cmd_vel')  # Make sure this aligns with twist_mux output
         ]
     )
     
@@ -126,6 +122,21 @@ def generate_launch_description():
         ]
     )
     
+    # Twist multiplexer to manage velocity commands
+    twist_mux_node = Node(
+        package='twist_mux',
+        executable='twist_mux',
+        name='twist_mux',
+        parameters=[
+            os.path.join(pkg_share, 'config', 'twist_mux.yaml'),
+            {'use_sim_time': LaunchConfiguration('use_sim_time')}
+        ],
+        remappings=[
+            ('/cmd_vel_out', '/diff_drive_controller/cmd_vel_unstamped')
+        ],
+        output='screen'
+    )
+    
     # LIFECYCLE MANAGEMENT
     # Lifecycle manager for localization
     lifecycle_manager_loc = Node(
@@ -155,7 +166,7 @@ def generate_launch_description():
     )
     
     # RViz
-    rviz_config_file = os.path.join(pkg_share, 'config', 'simple_nav2.rviz')
+    rviz_config_file = os.path.join(pkg_share, 'config', 'nav2.rviz')
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -165,14 +176,15 @@ def generate_launch_description():
         output='screen'
     )
     
-    # Activation helpers
-    # Set initial pose after delay
+    # Set initial pose
     set_initial_pose = Node(
         package='my_slam_pkg',
         executable='set_initial_pose.py',
         name='set_initial_pose',
+        output='screen',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-        output='screen'
+        # Add your default initial pose coordinates here
+        arguments=['0.0', '0.0', '0.0']
     )
     
     # Ensure navigation components are active
@@ -189,16 +201,18 @@ def generate_launch_description():
         declare_map_yaml_file,
         declare_params_file,
         
-        # Step 1: Start robot
+        # Start robot
         robot_gazebo,
         
-        # Step 2: Start localization components
-        static_tf,
+        # Start localization components
         map_server,
         amcl,
         lifecycle_manager_loc,
         
-        # Step 3: Start navigation components after localization (with delay)
+        # Start twist mux right after robot for command management
+        twist_mux_node,
+        
+        # Start navigation components (with delay)
         TimerAction(
             period=5.0,
             actions=[
@@ -210,19 +224,19 @@ def generate_launch_description():
             ]
         ),
         
-        # Step 4: Start RViz (with delay)
+        # Start RViz (with delay)
         TimerAction(
             period=2.0,
             actions=[rviz_node]
         ),
         
-        # Step 5: Set initial pose (with delay)
+        # Set initial pose (with delay)
         TimerAction(
             period=10.0,
             actions=[set_initial_pose]
         ),
         
-        # Step 6: Ensure all components are active (with extra delay)
+        # Ensure all components are active (with extra delay)
         TimerAction(
             period=15.0,
             actions=[ensure_active]

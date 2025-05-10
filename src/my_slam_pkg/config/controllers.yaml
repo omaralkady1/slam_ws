@@ -27,9 +27,9 @@ diff_drive_controller:
     
     enable_odom_tf: true
     
-    # Topic management
-    use_stamped_vel: false  # Set to false since we're using unstamped topics
-    cmd_vel_unstamped: true
+    # Topic management - updated for better compatibility
+    use_stamped_vel: false  
+    cmd_vel_unstamped_topic: "cmd_vel_unstamped"
     
     # Velocity limits
     linear:

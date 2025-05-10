@@ -12,3 +12,8 @@ __pycache__/
 *.swo
 *~
 .DS_Store
+# ROS and SLAM specific
+frames_*.gv
+frames_*.pdf
+*.bag
+*.db3

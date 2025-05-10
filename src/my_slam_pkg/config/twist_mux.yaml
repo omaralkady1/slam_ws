@@ -9,3 +9,7 @@ twist_mux:
         topic: /teleop_cmd_vel
         timeout: 0.5
         priority: 100
+    
+    # Output topic for the merged command velocity
+    publisher:
+      topic: /diff_drive_controller/cmd_vel_unstamped

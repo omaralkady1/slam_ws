@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf_transformations import quaternion_from_euler
 import math
 import sys
+import time
 
 class InitialPosePublisher(Node):
     def __init__(self):
@@ -13,10 +14,7 @@ class InitialPosePublisher(Node):
             PoseWithCovarianceStamped,
             'initialpose',
             10)
-        # Wait a moment for publisher to be established
-        self.get_logger().info('Waiting to publish initial pose...')
-        rclpy.spin_once(self, timeout_sec=1.0)
-        
+            
         # Parse command line arguments for position and orientation
         x = 0.0
         y = 0.0
@@ -28,10 +26,22 @@ class InitialPosePublisher(Node):
             y = float(sys.argv[2])
         if len(sys.argv) > 3:
             theta = float(sys.argv[3])
-            
-        self.publish_initial_pose(x, y, theta)
+        
+        # Wait to make sure ROS2 is fully initialized
+        self.get_logger().info('Waiting to publish initial pose...')
+        time.sleep(2.0)
+        
+        # Publish the initial pose multiple times to ensure it's received
+        self.timer = self.create_timer(1.0, lambda: self.publish_initial_pose(x, y, theta))
+        self.publish_count = 0
+        self.max_publish_count = 3  # Publish 3 times to ensure reception
         
     def publish_initial_pose(self, x=0.0, y=0.0, theta=0.0):
+        if self.publish_count >= self.max_publish_count:
+            self.timer.cancel()
+            self.get_logger().info('Initial pose publishing complete')
+            return
+            
         msg = PoseWithCovarianceStamped()
         msg.header.frame_id = 'map'
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -49,22 +59,25 @@ class InitialPosePublisher(Node):
         msg.pose.pose.orientation.w = q[3]
         
         # Set the covariance matrix (diagonal matrix with small variance)
-        # This represents uncertainty in the position estimate
-        covariance = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
-                      0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
+        # Lower values indicate higher certainty in the pose
+        covariance = [0.05, 0.0, 0.0, 0.0, 0.0, 0.0,
+                      0.0, 0.05, 0.0, 0.0, 0.0, 0.0,
                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                      0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
+                      0.0, 0.0, 0.0, 0.0, 0.0, 0.05]
         msg.pose.covariance = covariance
         
         # Publish the message
         self.publisher.publish(msg)
-        self.get_logger().info(f'Published initial pose: x={x}, y={y}, theta={theta}')
+        self.publish_count += 1
+        self.get_logger().info(f'Published initial pose ({self.publish_count}/{self.max_publish_count}): x={x}, y={y}, theta={theta}')
 
 def main(args=None):
     rclpy.init(args=args)
     initial_pose_publisher = InitialPosePublisher()
+    rclpy.spin(initial_pose_publisher)
+    initial_pose_publisher.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':
