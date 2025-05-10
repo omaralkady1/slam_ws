@@ -31,7 +31,7 @@ class ActivateNavigation(Node):
     
     def activate_all_nodes(self):
         """Ensure all navigation nodes are active"""
-        self.get_logger().info('Checking and activating all navigation nodes...')
+        self.get_logger().info('Checking all navigation nodes...')
         
         for node_name in self.lifecycle_nodes:
             if not self.get_state_clients[node_name].wait_for_service(timeout_sec=1.0):
@@ -41,6 +41,7 @@ class ActivateNavigation(Node):
             state = self.get_node_state(node_name)
             self.get_logger().info(f'{node_name} is in state: {state}')
             
+            # Only try to configure if unconfigured
             if state == 'unconfigured':
                 self.configure_node(node_name)
                 self.get_logger().info(f'Configured {node_name}')
@@ -50,6 +51,7 @@ class ActivateNavigation(Node):
                 # Get updated state
                 state = self.get_node_state(node_name)
             
+            # Only try to activate if inactive
             if state == 'inactive':
                 self.activate_node(node_name)
                 self.get_logger().info(f'Activated {node_name}')

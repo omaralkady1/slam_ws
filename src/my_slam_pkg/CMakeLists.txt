@@ -34,6 +34,7 @@ install(PROGRAMS
   scripts/nav_test.py
   scripts/setup_navigation.py
   scripts/ensure_nav_active.py
+  
   DESTINATION lib/${PROJECT_NAME}
 )
 
