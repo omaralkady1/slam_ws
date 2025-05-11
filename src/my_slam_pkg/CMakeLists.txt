@@ -5,6 +5,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Find required packages
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -20,8 +21,9 @@ find_package(diff_drive_controller REQUIRED)
 find_package(joint_state_broadcaster REQUIRED)
 find_package(twist_mux REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(controller_manager_msgs REQUIRED)  # For diagnostics
 
-# Install Python scripts
+# Install Python scripts with proper permissions
 install(PROGRAMS
   scripts/nav_goal_sender.py
   scripts/send_waypoints.py
@@ -34,11 +36,12 @@ install(PROGRAMS
   scripts/nav_test.py
   scripts/setup_navigation.py
   scripts/ensure_nav_active.py
+  scripts/test_motor_control.py
   
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Install all other files
+# Install all configuration files
 install(DIRECTORY
   launch
   config
@@ -47,4 +50,5 @@ install(DIRECTORY
   urdf
   DESTINATION share/${PROJECT_NAME}
 )
+
 ament_package()

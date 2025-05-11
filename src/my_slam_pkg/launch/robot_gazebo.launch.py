@@ -64,7 +64,7 @@ def generate_launch_description():
         parameters=[{
             'robot_description': robot_description,
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'publish_frequency': 50.0,  # Increased from default
+            'publish_frequency': 50.0,  # Increased from default for smoother TF updates
         }],
         output='screen'
     )
@@ -109,23 +109,13 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Diff Drive Controller
+    # Diff Drive Controller - make sure we wait for joint state broadcaster to be active
     diff_drive_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["diff_drive_controller", "--controller-manager", "/controller_manager"],
         output="screen",
     )
-
-    # Delay diff_drive_controller after joint_state_broadcaster
-    delay_diff_drive_controller = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[diff_drive_controller_spawner],
-        )
-    )
-
-    
 
     # Static TF publisher for base_footprint to base_link
     static_tf_base_footprint_to_base_link = Node(
@@ -136,6 +126,14 @@ def generate_launch_description():
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}]
     )
 
+    # Delay diff_drive_controller after joint_state_broadcaster
+    delay_diff_drive_controller_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[diff_drive_controller_spawner],
+        )
+    )
+
     return LaunchDescription([
         set_gazebo_model_path,
         declare_use_sim_time,
@@ -144,7 +142,6 @@ def generate_launch_description():
         spawn_robot,
         controller_manager,
         joint_state_broadcaster_spawner,
-        delay_diff_drive_controller,
-        
+        delay_diff_drive_controller_spawner,
         static_tf_base_footprint_to_base_link
     ])

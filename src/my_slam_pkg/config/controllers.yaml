@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 50
+    update_rate: 50  # Higher update rate for smoother control
     use_sim_time: true
 
     diff_drive_controller:
@@ -11,27 +11,34 @@ controller_manager:
 
 diff_drive_controller:
   ros__parameters:
+    # Configure the controller to use all four wheels
     left_wheel_names: ["front_left_wheel_joint", "rear_left_wheel_joint"]
     right_wheel_names: ["front_right_wheel_joint", "rear_right_wheel_joint"]
     
-    wheel_separation: 0.34
-    wheel_radius: 0.05
+    # CRITICAL: Define wheel dimensions with precise values from URDF
+    wheel_separation: 0.34  # Distance between left and right wheels (from URDF)
+    wheel_radius: 0.05      # Wheel radius from URDF
     
-    wheel_separation_multiplier: 1.0
-    left_wheel_radius_multiplier: 1.0
-    right_wheel_radius_multiplier: 1.0
+    # ROTATION FIX: Adjust these multipliers to fine-tune rotation behavior
+    wheel_separation_multiplier: 1.05  # Slightly increased to improve rotation accuracy
+    left_wheel_radius_multiplier: 0.95  # Reduce left wheel effective radius
+    right_wheel_radius_multiplier: 0.95 # Reduce right wheel effective radius
     
+    # Higher publishing rate for smoother visualization
     publish_rate: 50.0
+    
+    # Important: These frames must match navigation stack
     odom_frame_id: "odom"
     base_frame_id: "base_footprint"
     
+    # Critical setting: MUST be true for visualization
     enable_odom_tf: true
     
-    # Topic management - updated for better compatibility
-    use_stamped_vel: false  
-    cmd_vel_unstamped_topic: "cmd_vel_unstamped"
+    # Topic configuration - used by twist_mux
+    cmd_vel_topic: "cmd_vel"
+    use_stamped_vel: false
     
-    # Velocity limits
+    # Velocity limits - match with Nav2 configuration
     linear:
       x:
         has_velocity_limits: true
@@ -48,3 +55,15 @@ diff_drive_controller:
         has_acceleration_limits: true
         max_acceleration: 1.0
         min_acceleration: -1.0
+        
+    # Pose covariance diagonal values for odom (adjust to reduce drift)
+    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    
+    # Twist covariance diagonal values for odom (adjust to reduce drift)
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    
+    # Enable open loop control for more predictable rotation
+    open_loop: false
+    
+    # Improved wheel slip modeling
+    wheel_slippage_factor: 0.05

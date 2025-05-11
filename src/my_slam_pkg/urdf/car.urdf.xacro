@@ -2,13 +2,13 @@
 <robot name="my_slam_pkg" xmlns:xacro="http://www.ros.org/wiki/xacro">
     
   <!-- Robot Configuration -->
-<link name="base_footprint"/>
+  <link name="base_footprint"/>
 
-<joint name="base_joint" type="fixed">
+  <joint name="base_joint" type="fixed">
     <parent link="base_footprint"/>
     <child link="base_link"/>
     <origin xyz="0 0 0.1" rpy="0 0 0"/>
-</joint>
+  </joint>
 
   <!-- Colors -->
   <material name="black">
@@ -33,11 +33,10 @@
     </collision>
     <inertial>
       <mass value="5.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
     </inertial>
   </link>
-
-
 
   <!-- Front Left Wheel -->
   <link name="front_left_wheel">
@@ -54,17 +53,18 @@
     </collision>
     <inertial>
       <mass value="0.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
 
- <joint name="front_left_wheel_joint" type="continuous">
+  <joint name="front_left_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="front_left_wheel"/>
     <origin xyz="0.15 0.17 -0.05" rpy="-1.5708 0 0"/>
     <axis xyz="0 0 1"/>
-    <dynamics damping="0.0" friction="0.0"/>
-</joint>
+    <dynamics damping="0.05" friction="0.05"/>
+  </joint>
 
   <!-- Front Right Wheel -->
   <link name="front_right_wheel">
@@ -81,17 +81,18 @@
     </collision>
     <inertial>
       <mass value="0.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
 
-<joint name="front_right_wheel_joint" type="continuous">
+  <joint name="front_right_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="front_right_wheel"/>
     <origin xyz="0.15 -0.17 -0.05" rpy="-1.5708 0 0"/>
     <axis xyz="0 0 1"/>
-    <dynamics damping="0.0" friction="0.0"/>
-</joint>
+    <dynamics damping="0.05" friction="0.05"/>
+  </joint>
 
   <!-- Rear Left Wheel -->
   <link name="rear_left_wheel">
@@ -108,17 +109,18 @@
     </collision>
     <inertial>
       <mass value="0.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
 
- <joint name="rear_left_wheel_joint" type="continuous">
+  <joint name="rear_left_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="rear_left_wheel"/>
     <origin xyz="-0.15 0.17 -0.05" rpy="-1.5708 0 0"/>
     <axis xyz="0 0 1"/>
-    <dynamics damping="0.0" friction="0.0"/>
-</joint>
+    <dynamics damping="0.05" friction="0.05"/>
+  </joint>
 
   <!-- Rear Right Wheel -->
   <link name="rear_right_wheel">
@@ -135,17 +137,18 @@
     </collision>
     <inertial>
       <mass value="0.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
 
-<joint name="rear_right_wheel_joint" type="continuous">
+  <joint name="rear_right_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="rear_right_wheel"/>
     <origin xyz="-0.15 -0.17 -0.05" rpy="-1.5708 0 0"/>
     <axis xyz="0 0 1"/>
-    <dynamics damping="0.0" friction="0.0"/>
-</joint>
+    <dynamics damping="0.05" friction="0.05"/>
+  </joint>
 
   <!-- LiDAR Link -->
   <link name="lidar_link">
@@ -162,6 +165,7 @@
     </collision>
     <inertial>
       <mass value="0.1"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
@@ -220,14 +224,14 @@
   </ros2_control>
 
   <!-- Gazebo ROS2 Control Plugin -->
- <gazebo>
+  <gazebo>
     <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
       <parameters>$(find my_slam_pkg)/config/controllers.yaml</parameters>
       <robot_sim_type>gazebo_ros2_control/GazeboSystem</robot_sim_type>
     </plugin>
   </gazebo>
 
-  <!-- LiDAR Sensor Configuration -->
+  <!-- LiDAR Sensor Configuration - Improved configuration -->
   <gazebo reference="lidar_link">
     <sensor type="ray" name="lidar">
       <pose>0 0 0 0 0 0</pose>
@@ -247,9 +251,15 @@
           <max>12.0</max>
           <resolution>0.01</resolution>
         </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
       </ray>
       <plugin name="laser_controller" filename="libgazebo_ros_ray_sensor.so">
         <ros>
+          <namespace>/</namespace>
           <remapping>~/out:=scan</remapping>
         </ros>
         <output_type>sensor_msgs/LaserScan</output_type>
@@ -263,33 +273,41 @@
     <material>Gazebo/Blue</material>
   </gazebo>
 
-<gazebo reference="front_left_wheel">
+  <gazebo reference="front_left_wheel">
     <material>Gazebo/Black</material>
     <mu1>0.8</mu1>
     <mu2>0.8</mu2>
-   
-</gazebo>
+    <kp>500000.0</kp>
+    <kd>10.0</kd>
+    <fdir1>1 0 0</fdir1>
+  </gazebo>
 
-<gazebo reference="front_right_wheel">
+  <gazebo reference="front_right_wheel">
     <material>Gazebo/Black</material>
     <mu1>0.8</mu1>
     <mu2>0.8</mu2>
-   
-</gazebo>
+    <kp>500000.0</kp>
+    <kd>10.0</kd>
+    <fdir1>1 0 0</fdir1>
+  </gazebo>
 
-<gazebo reference="rear_left_wheel">
+  <gazebo reference="rear_left_wheel">
     <material>Gazebo/Black</material>
     <mu1>0.8</mu1>
     <mu2>0.8</mu2>
-   
-</gazebo>
+    <kp>500000.0</kp>
+    <kd>10.0</kd>
+    <fdir1>1 0 0</fdir1>
+  </gazebo>
 
-<gazebo reference="rear_right_wheel">
+  <gazebo reference="rear_right_wheel">
     <material>Gazebo/Black</material>
     <mu1>0.8</mu1>
     <mu2>0.8</mu2>
-   
-</gazebo>
+    <kp>500000.0</kp>
+    <kd>10.0</kd>
+    <fdir1>1 0 0</fdir1>
+  </gazebo>
 
   <gazebo reference="lidar_link">
     <material>Gazebo/Black</material>

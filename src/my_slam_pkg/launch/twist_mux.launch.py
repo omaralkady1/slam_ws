@@ -9,7 +9,7 @@ def generate_launch_description():
     # Declare arguments
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='false',
+        default_value='true',  # Changed to true by default for simulation
         description='Use simulation (Gazebo) clock if true'
     )
     
@@ -25,7 +25,7 @@ def generate_launch_description():
         name='twist_mux',
         parameters=[twist_mux_config, {'use_sim_time': LaunchConfiguration('use_sim_time')}],
         remappings=[
-            ('/cmd_vel_out', '/diff_drive_controller/cmd_vel_unstamped')
+            ('/cmd_vel_out', '/diff_drive_controller/cmd_vel')  # Make sure this matches your diff_drive_controller's input
         ],
         output='screen'
     )

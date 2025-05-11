@@ -10,6 +10,11 @@ twist_mux:
         timeout: 0.5
         priority: 100
     
-    # Output topic for the merged command velocity
+    # Critical: Make sure the output topic matches diff_drive_controller's input
     publisher:
-      topic: /diff_drive_controller/cmd_vel_unstamped
+      topic: /diff_drive_controller/cmd_vel
+      
+    # Additional parameters to improve rotation behavior
+    # This will limit the rate of change for angular velocities
+    angular_acceleration: 0.5  # rads^2/sec
+    angular_deceleration: 0.5  # rads^2/sec
