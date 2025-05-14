@@ -1,0 +1,9 @@
+<library path="my_slam_pkg_hardware_interface">
+  <class name="my_slam_pkg/ESP32HardwareInterface"
+         type="my_slam_pkg::ESP32HardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Hardware Interface for my_slam_pkg to communicate with ESP32 using micro-ROS
+    </description>
+  </class>
+</library>

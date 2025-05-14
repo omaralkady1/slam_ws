@@ -1,5 +1,8 @@
 <?xml version="1.0"?>
 <robot name="my_slam_pkg" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Arguments -->
+  <xacro:arg name="use_fake_hardware" default="false"/>
     
   <!-- Robot Configuration -->
   <link name="base_footprint"/>
@@ -176,7 +179,9 @@
     <origin xyz="0 0 0.1" rpy="0 0 0"/>
   </joint>
 
-  <!-- ROS2 Control Configuration -->
+ <!-- ROS2 Control Configuration -->
+<xacro:if value="$(arg use_fake_hardware)">
+  <!-- Gazebo simulated control -->
   <ros2_control name="car_control" type="system">
     <hardware>
       <plugin>gazebo_ros2_control/GazeboSystem</plugin>
@@ -222,14 +227,76 @@
       <state_interface name="velocity"/>
     </joint>
   </ros2_control>
+</xacro:if>
+
+<xacro:unless value="$(arg use_fake_hardware)">
+  <!-- ESP32 hardware control -->
+  <ros2_control name="esp32_motor_controller" type="system">
+    <hardware>
+      <plugin>my_slam_pkg/ESP32HardwareInterface</plugin>
+      <param name="wheel_radius">0.05</param>
+      <param name="wheel_separation">0.34</param>
+      <param name="cmd_vel_topic">/cmd_vel</param>
+      <param name="joint_states_topic">/joint_states</param>
+    </hardware>
+    
+    <!-- Front Left Wheel -->
+    <joint name="front_left_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <!-- Front Right Wheel -->
+    <joint name="front_right_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <!-- Rear Left Wheel -->
+    <joint name="rear_left_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <!-- Rear Right Wheel -->
+    <joint name="rear_right_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+</xacro:unless>
 
   <!-- Gazebo ROS2 Control Plugin -->
   <gazebo>
+  <xacro:if value="$(arg use_fake_hardware)">
     <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
       <parameters>$(find my_slam_pkg)/config/controllers.yaml</parameters>
       <robot_sim_type>gazebo_ros2_control/GazeboSystem</robot_sim_type>
     </plugin>
-  </gazebo>
+  </xacro:if>
+  <xacro:unless value="$(arg use_fake_hardware)">
+    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+      <parameters>$(find my_slam_pkg)/config/hardware_controllers.yaml</parameters>
+      <robot_sim_type>my_slam_pkg/ESP32HardwareInterface</robot_sim_type>
+    </plugin>
+  </xacro:unless>
+</gazebo>
 
   <!-- LiDAR Sensor Configuration - Improved configuration -->
   <gazebo reference="lidar_link">
