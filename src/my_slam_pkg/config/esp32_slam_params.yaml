@@ -1,0 +1,67 @@
+
+slam_toolbox:
+  ros__parameters:
+    # SLAM Mode
+    mode: mapping
+    
+    # Important: Use real time, not simulation time
+    use_sim_time: false
+    
+    # Robot frame params
+    base_frame: base_footprint
+    map_frame: map
+    odom_frame: odom
+    
+    # Scan topic from your LIDAR
+    scan_topic: /scan
+    
+    # Scan matching params - optimized for ESP32 processing
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.1  # Reduced for better mapping with slower robot
+    minimum_travel_heading: 0.1   # Reduced for better mapping
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 8.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+    
+    # Loop closure params - conservative for stability
+    loop_search_space_dimension: 6.0
+    loop_match_minimum_chain_size: 8
+    loop_match_maximum_variance_coarse: 2.0
+    loop_match_minimum_response_coarse: 0.3
+    loop_match_minimum_response_fine: 0.4
+    do_loop_closing: true
+    
+    # Optimization params
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    optimization_delta: 0.05
+    optimization_step_size: 0.5
+    
+    # Visualization and interaction
+    enable_interactive_mode: true
+    
+    # General params optimized for ESP32
+    use_pose_extrapolator: true
+    debug_logging: false
+    throttle_scans: 1
+    transform_timeout: 0.2
+    map_update_interval: 3.0      # More frequent for real-time mapping
+    resolution: 0.05
+    max_laser_range: 8.0          # Conservative range
+    min_laser_range: 0.15
+    minimum_time_interval: 0.3    # More frequent updates
+    transform_publish_period: 0.02
+    map_publish_period: 1.0
+    
+    # Correlation parameters - tuned for ESP32 performance
+    correlation_search_space_dimension: 0.3
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.03
+    
+    # Distance and angle penalties
+    distance_variance_penalty: 0.3
+    angle_variance_penalty: 0.8

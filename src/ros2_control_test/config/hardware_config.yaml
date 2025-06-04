@@ -1,0 +1,19 @@
+esp32_hardware:
+  ros__parameters:
+    # Hardware interface parameters
+    cmd_vel_topic: "/cmd_vel"
+    joint_states_topic: "/joint_states"
+    
+    # ESP32 connection parameters (if using serial)
+    serial_port: "/dev/ttyUSB0"
+    baud_rate: 115200
+    
+    # Timeout for hardware communication
+    timeout_ms: 500
+    
+    # Joint names (must match URDF)
+    joints:
+      - front_left_wheel_joint
+      - front_right_wheel_joint
+      - rear_left_wheel_joint
+      - rear_right_wheel_joint

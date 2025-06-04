@@ -1,11 +1,10 @@
-#include "my_slam_pkg/esp32_hardware_interface.hpp"
 
+#include "my_slam_pkg/esp32_hardware_interface.hpp"
 #include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <vector>
-
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -25,31 +24,44 @@ hardware_interface::CallbackReturn ESP32HardwareInterface::on_init(
     (info_.hardware_parameters.at("use_sim_hardware") == "true") : false;
 
   if (use_sim_hardware_) {
-    RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), "Using simulated hardware");
+    RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), "Using simulated ESP32 hardware");
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), "Using real hardware");
+    RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), "Using real ESP32 hardware via micro-ROS");
   }
 
-  // Setup joint variables
+  // Setup joint variables - must match your URDF joint names
   joint_names_.resize(info_.joints.size());
   hw_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_efforts_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
   hw_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
-  // Store joint names
+  // Store joint names and verify they match expected pattern
   for (size_t i = 0; i < info_.joints.size(); i++) {
     joint_names_[i] = info_.joints[i].name;
     RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), "Joint %ld: %s", i, joint_names_[i].c_str());
   }
 
-  // Get parameters from URDF
-  wheel_radius_ = std::stod(info_.hardware_parameters["wheel_radius"]);
-  wheel_separation_ = std::stod(info_.hardware_parameters["wheel_separation"]);
+  // Get robot parameters from hardware parameters
+  if (info_.hardware_parameters.find("wheel_radius") != info_.hardware_parameters.end()) {
+    wheel_radius_ = std::stod(info_.hardware_parameters.at("wheel_radius"));
+  } else {
+    wheel_radius_ = 0.05;  // Default from your config
+    RCLCPP_WARN(rclcpp::get_logger("ESP32HardwareInterface"), "Using default wheel_radius: %f", wheel_radius_);
+  }
+
+  if (info_.hardware_parameters.find("wheel_separation") != info_.hardware_parameters.end()) {
+    wheel_separation_ = std::stod(info_.hardware_parameters.at("wheel_separation"));
+  } else {
+    wheel_separation_ = 0.34;  // Default from your config
+    RCLCPP_WARN(rclcpp::get_logger("ESP32HardwareInterface"), "Using default wheel_separation: %f", wheel_separation_);
+  }
+
+  // Get topic names
   cmd_vel_topic_ = info_.hardware_parameters.count("cmd_vel_topic") ? 
-    info_.hardware_parameters["cmd_vel_topic"] : "/cmd_vel";
+    info_.hardware_parameters.at("cmd_vel_topic") : "/cmd_vel";
   joint_states_topic_ = info_.hardware_parameters.count("joint_states_topic") ? 
-    info_.hardware_parameters["joint_states_topic"] : "/joint_states";
+    info_.hardware_parameters.at("joint_states_topic") : "/joint_states";
 
   RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), 
               "Wheel radius: %f, separation: %f", wheel_radius_, wheel_separation_);
@@ -58,7 +70,6 @@ hardware_interface::CallbackReturn ESP32HardwareInterface::on_init(
               cmd_vel_topic_.c_str(), joint_states_topic_.c_str());
 
   joint_state_received_ = false;
-
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -66,18 +77,24 @@ hardware_interface::CallbackReturn ESP32HardwareInterface::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   // Create a non-lifecycle node for communication
-  node_ = std::make_shared<rclcpp::Node>("esp32_hardware_interface");
+  node_ = std::make_shared<rclcpp::Node>("esp32_hardware_interface_node");
 
-  // Create publisher for velocity commands
-  vel_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(
-    cmd_vel_topic_, rclcpp::QoS(10).reliable());
+  if (!use_sim_hardware_) {
+    // For real hardware: Create publisher for velocity commands to ESP32
+    vel_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(
+      cmd_vel_topic_, rclcpp::QoS(10).reliable());
 
-  // Create subscription for joint states
-  joint_state_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>(
-    joint_states_topic_, rclcpp::QoS(10).reliable(), 
-    std::bind(&ESP32HardwareInterface::joint_state_callback, this, std::placeholders::_1));
+    // Create subscription for joint states from ESP32
+    joint_state_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>(
+      joint_states_topic_, rclcpp::QoS(10).reliable(), 
+      std::bind(&ESP32HardwareInterface::joint_state_callback, this, std::placeholders::_1));
 
-  RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), "Hardware interface configured");
+    RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), 
+                "Configured for real ESP32 hardware communication");
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), 
+                "Configured for simulated ESP32 hardware");
+  }
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -86,7 +103,7 @@ std::vector<hardware_interface::StateInterface> ESP32HardwareInterface::export_s
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
   
-  // Export position, velocity state interfaces for each joint
+  // Export position, velocity, and effort state interfaces for each joint
   for (size_t i = 0; i < info_.joints.size(); i++) {
     state_interfaces.emplace_back(hardware_interface::StateInterface(
       joint_names_[i], hardware_interface::HW_IF_POSITION, &hw_positions_[i]));
@@ -136,11 +153,13 @@ hardware_interface::CallbackReturn ESP32HardwareInterface::on_activate(
 hardware_interface::CallbackReturn ESP32HardwareInterface::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // Send zero velocity to stop the robot
-  geometry_msgs::msg::Twist zero_vel;
-  zero_vel.linear.x = 0.0;
-  zero_vel.angular.z = 0.0;
-  vel_pub_->publish(zero_vel);
+  if (!use_sim_hardware_ && vel_pub_) {
+    // Send zero velocity to stop the robot
+    geometry_msgs::msg::Twist zero_vel;
+    zero_vel.linear.x = 0.0;
+    zero_vel.angular.z = 0.0;
+    vel_pub_->publish(zero_vel);
+  }
   
   RCLCPP_INFO(rclcpp::get_logger("ESP32HardwareInterface"), "Hardware interface deactivated");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -150,37 +169,48 @@ hardware_interface::return_type ESP32HardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
   if (use_sim_hardware_) {
-    // Simulation logic - simple position and velocity integration
+    // Simulation logic - simple integration
     for (size_t i = 0; i < hw_positions_.size(); i++) {
       // Update position based on velocity and period
       hw_positions_[i] += hw_commands_[i] * period.seconds();
-      // Keep velocity same as commanded
+      // Set velocity to match commanded velocity
       hw_velocities_[i] = hw_commands_[i];
+      // No effort calculation in simulation
+      hw_efforts_[i] = 0.0;
     }
     return hardware_interface::return_type::OK;
   }
   
   // Real hardware logic
   // Process any pending callbacks from the joint_state_sub_
-  rclcpp::spin_some(node_);
+  if (node_) {
+    rclcpp::spin_some(node_);
+  }
   
-  // Check if we've received joint states
+  // Check if we've received joint states from ESP32
   if (!joint_state_received_) {
-    RCLCPP_DEBUG(rclcpp::get_logger("ESP32HardwareInterface"), "No joint state received yet");
+    RCLCPP_DEBUG_THROTTLE(rclcpp::get_logger("ESP32HardwareInterface"), 
+                          *node_->get_clock(), 1000, "No joint state received from ESP32 yet");
     return hardware_interface::return_type::OK;
   }
 
   // Copy data from the latest joint state message
   std::lock_guard<std::mutex> lock(joint_state_mutex_);
-  if (latest_joint_state_) {
-    // Match joint names and copy data
-    for (size_t i = 0; i < latest_joint_state_->name.size(); i++) {
-      for (size_t j = 0; j < joint_names_.size(); j++) {
-        if (latest_joint_state_->name[i] == joint_names_[j]) {
-          hw_positions_[j] = latest_joint_state_->position[i];
-          hw_velocities_[j] = latest_joint_state_->velocity[i];
-          if (latest_joint_state_->effort.size() > i) {
-            hw_efforts_[j] = latest_joint_state_->effort[i];
+  if (latest_joint_state_ && latest_joint_state_->name.size() >= 4) {
+    // Map joint states from ESP32 to our joint order
+    // ESP32 publishes in order: [front_left, front_right, rear_left, rear_right]
+    for (size_t esp32_idx = 0; esp32_idx < latest_joint_state_->name.size() && esp32_idx < 4; esp32_idx++) {
+      // Find corresponding joint in our configuration
+      for (size_t our_idx = 0; our_idx < joint_names_.size(); our_idx++) {
+        if (latest_joint_state_->name[esp32_idx] == joint_names_[our_idx]) {
+          if (esp32_idx < latest_joint_state_->position.size()) {
+            hw_positions_[our_idx] = latest_joint_state_->position[esp32_idx];
+          }
+          if (esp32_idx < latest_joint_state_->velocity.size()) {
+            hw_velocities_[our_idx] = latest_joint_state_->velocity[esp32_idx];
+          }
+          if (esp32_idx < latest_joint_state_->effort.size()) {
+            hw_efforts_[our_idx] = latest_joint_state_->effort[esp32_idx];
           }
           break;
         }
@@ -196,44 +226,46 @@ hardware_interface::return_type ESP32HardwareInterface::write(
 {
   if (use_sim_hardware_) {
     // In simulation mode, we don't need to publish commands
-    // The simulated state is updated in the read function
     return hardware_interface::return_type::OK;
   }
 
-  // Real hardware logic
-  // Calculate linear and angular velocities from wheel commands
-  // Assuming differential drive kinematics with 4 wheels (2 on each side)
+  if (!vel_pub_) {
+    return hardware_interface::return_type::ERROR;
+  }
+
+  // Convert joint velocity commands to differential drive kinematics
+  // Find wheel velocities by name to ensure correct mapping
+  double fl_vel = 0.0, fr_vel = 0.0, rl_vel = 0.0, rr_vel = 0.0;
   
-  // For simplicity, assume:
-  // front_left and rear_left wheels are controlled together
-  // front_right and rear_right wheels are controlled together
-  
-  // Find indices for each wheel
-  size_t fl_idx = 0, fr_idx = 1, rl_idx = 2, rr_idx = 3;
   for (size_t i = 0; i < joint_names_.size(); i++) {
-    if (joint_names_[i].find("front_left") != std::string::npos) {
-      fl_idx = i;
-    } else if (joint_names_[i].find("front_right") != std::string::npos) {
-      fr_idx = i;
-    } else if (joint_names_[i].find("rear_left") != std::string::npos) {
-      rl_idx = i;
-    } else if (joint_names_[i].find("rear_right") != std::string::npos) {
-      rr_idx = i;
+    if (joint_names_[i] == "front_left_wheel_joint") {
+      fl_vel = hw_commands_[i];
+    } else if (joint_names_[i] == "front_right_wheel_joint") {
+      fr_vel = hw_commands_[i];
+    } else if (joint_names_[i] == "rear_left_wheel_joint") {
+      rl_vel = hw_commands_[i];
+    } else if (joint_names_[i] == "rear_right_wheel_joint") {
+      rr_vel = hw_commands_[i];
     }
   }
   
-  // Average left and right wheel commands
-  double left_wheel_vel = (hw_commands_[fl_idx] + hw_commands_[rl_idx]) / 2.0;
-  double right_wheel_vel = (hw_commands_[fr_idx] + hw_commands_[rr_idx]) / 2.0;
+  // Average left and right wheel commands for differential drive
+  double left_wheel_vel = (fl_vel + rl_vel) / 2.0;
+  double right_wheel_vel = (fr_vel + rr_vel) / 2.0;
   
-  // Convert to linear and angular velocities
+  // Convert wheel velocities to robot linear and angular velocities
   double linear_x = wheel_radius_ * (left_wheel_vel + right_wheel_vel) / 2.0;
   double angular_z = wheel_radius_ * (right_wheel_vel - left_wheel_vel) / wheel_separation_;
   
-  // Create and publish Twist message
+  // Create and publish Twist message to ESP32
   geometry_msgs::msg::Twist cmd_vel;
   cmd_vel.linear.x = linear_x;
+  cmd_vel.linear.y = 0.0;
+  cmd_vel.linear.z = 0.0;
+  cmd_vel.angular.x = 0.0;
+  cmd_vel.angular.y = 0.0;
   cmd_vel.angular.z = angular_z;
+  
   vel_pub_->publish(cmd_vel);
   
   return hardware_interface::return_type::OK;

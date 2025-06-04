@@ -1,0 +1,10 @@
+<!-- hardware_interface/ros2_control_test_hardware.xml -->
+<library path="ros2_control_test_hardware_interface">
+  <class name="ros2_control_test/ESP32HardwareInterface"
+         type="ros2_control_test::ESP32HardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Hardware Interface for ros2_control_test to communicate with ESP32 using micro-ROS
+    </description>
+  </class>
+</library>

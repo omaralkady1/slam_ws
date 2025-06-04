@@ -42,6 +42,14 @@ install(PROGRAMS
   scripts/setup_navigation.py
   scripts/ensure_nav_active.py
   scripts/test_motor_control.py
+  scripts/manual_motor_test.py
+  scripts/calibrate_motors.py
+  scripts/mock_esp32.py
+  scripts/rplidar_diagnostics.py
+  scripts/setup_rplidar.py
+  scripts/test_motors.py
+  scripts/test_rplidar.py
+  scripts/tf_monitor.py
   
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -93,6 +101,8 @@ install(DIRECTORY
   maps
   worlds
   urdf
+  rviz
+  firmware_reference
   DESTINATION share/${PROJECT_NAME}
 )
 
