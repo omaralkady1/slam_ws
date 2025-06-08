@@ -1,4 +1,3 @@
-
 #include "my_slam_pkg/esp32_hardware_interface.hpp"
 #include <chrono>
 #include <cmath>
@@ -31,10 +30,10 @@ hardware_interface::CallbackReturn ESP32HardwareInterface::on_init(
 
   // Setup joint variables - must match your URDF joint names
   joint_names_.resize(info_.joints.size());
-  hw_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_efforts_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+  hw_positions_.resize(info_.joints.size(), 0.0);
+  hw_velocities_.resize(info_.joints.size(), 0.0);
+  hw_efforts_.resize(info_.joints.size(), 0.0);
+  hw_commands_.resize(info_.joints.size(), 0.0);
 
   // Store joint names and verify they match expected pattern
   for (size_t i = 0; i < info_.joints.size(); i++) {
@@ -134,15 +133,9 @@ hardware_interface::CallbackReturn ESP32HardwareInterface::on_activate(
 {
   // Set default values for joint states
   for (size_t i = 0; i < hw_positions_.size(); i++) {
-    if (std::isnan(hw_positions_[i])) {
-      hw_positions_[i] = 0.0;
-    }
-    if (std::isnan(hw_velocities_[i])) {
-      hw_velocities_[i] = 0.0;
-    }
-    if (std::isnan(hw_efforts_[i])) {
-      hw_efforts_[i] = 0.0;
-    }
+    hw_positions_[i] = 0.0;
+    hw_velocities_[i] = 0.0;
+    hw_efforts_[i] = 0.0;
     hw_commands_[i] = 0.0;
   }
 

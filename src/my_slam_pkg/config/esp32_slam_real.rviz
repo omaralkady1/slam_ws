@@ -1,4 +1,3 @@
-
 Panels:
   - Class: rviz_common/Displays
     Help Height: 78
@@ -9,9 +8,9 @@ Panels:
         - /Status1
         - /TF1/Frames1
         - /LaserScan1
-        - /Map1
         - /RobotModel1
-        - /ESP32 Diagnostics1
+        - /ESP32 Status1
+        - /Joint States1
       Splitter Ratio: 0.5
     Tree Height: 617
   - Class: rviz_common/Selection
@@ -53,11 +52,11 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 10
+      Plane Cell Count: 20
       Reference Frame: <Fixed Frame>
       Value: true
 
-    # TF Tree visualization
+    # TF Tree visualization - CRITICAL for debugging
     - Class: rviz_default_plugins/TF
       Enabled: true
       Frame Timeout: 15
@@ -69,22 +68,36 @@ Visualization Manager:
           Value: true
         lidar_link:
           Value: true
-        map:
+        front_left_wheel:
+          Value: true
+        front_right_wheel:
+          Value: true
+        rear_left_wheel:
+          Value: true
+        rear_right_wheel:
           Value: true
         odom:
-          Value: true
-      Marker Scale: 0.5
+          Value: false
+        map:
+          Value: false
+      Marker Scale: 0.3
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          odom:
-            base_footprint:
-              base_link:
-                lidar_link:
-                  {}
+        base_footprint:
+          base_link:
+            lidar_link:
+              {}
+            front_left_wheel:
+              {}
+            front_right_wheel:
+              {}
+            rear_left_wheel:
+              {}
+            rear_right_wheel:
+              {}
       Update Interval: 0
       Value: true
 
@@ -107,48 +120,13 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
-        base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        esp32_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        front_left_wheel:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        front_right_wheel:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        lidar_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        rear_left_wheel:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        rear_right_wheel:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
       Name: RobotModel
       TF Prefix: ""
       Update Interval: 0
       Value: true
       Visual Enabled: true
 
-    # RPLidar A1 Laser Scan
+    # RPLidar A1 Laser Scan - Real hardware
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -171,7 +149,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.05
+      Size (m): 0.03
       Style: Points
       Topic:
         Depth: 5
@@ -183,23 +161,37 @@ Visualization Manager:
       Use rainbow: false
       Value: true
 
-    # SLAM-generated Map
-    - Alpha: 0.7
-      Class: rviz_default_plugins/Map
-      Color Scheme: map
-      Draw Behind: false
+    # Joint States Display - IMPORTANT for motor debugging
+    - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: Map
+      Name: Joint States
+      Namespaces:
+        joint_positions: true
+        joint_velocities: true
       Topic:
         Depth: 5
-        Durability Policy: Transient Local
+        Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /map
-      Use Timestamp: false
+        Value: /joint_state_markers
       Value: true
 
-    # Robot Path/Trajectory
+    # ESP32 Connection Status
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: ESP32 Status
+      Namespaces:
+        esp32_status: true
+        connection_status: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /esp32_diagnostics_markers
+      Value: true
+
+    # Odometry path (if available)
     - Alpha: 1
       Buffer Length: 1000
       Class: rviz_default_plugins/Path
@@ -210,7 +202,7 @@ Visualization Manager:
       Length: 0.30000001192092896
       Line Style: Lines
       Line Width: 0.029999999329447746
-      Name: Robot Path
+      Name: Odometry Path
       Offset:
         X: 0
         Y: 0
@@ -225,41 +217,57 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /plan
+        Value: /odom_path
       Value: true
 
-    # Joint States Display
-    - Class: rviz_default_plugins/MarkerArray
+    # Velocity commands visualization
+    - Alpha: 1
+      Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: Joint States
+      Name: Velocity Commands
       Namespaces:
-        joint_states: true
+        cmd_vel_arrows: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /joint_state_markers
+        Value: /cmd_vel_markers
       Value: true
 
-    # ESP32 Diagnostics
+    # RPLidar diagnostics
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: ESP32 Diagnostics
+      Name: RPLidar Diagnostics
       Namespaces:
-        diagnostics: true
+        lidar_status: true
+        scan_quality: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /esp32_diagnostics_markers
+        Value: /rplidar_diagnostics_markers
+      Value: true
+
+    # TF Status Monitor
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: TF Monitor
+      Namespaces:
+        tf_status: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /tf_monitor_markers
       Value: true
 
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: map
+    Fixed Frame: base_footprint
     Frame Rate: 30
   Name: root
   Tools:
@@ -302,7 +310,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 10
+      Distance: 3
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -317,7 +325,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.785398006439209
+      Pitch: 0.5
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
       Yaw: 0.785398006439209

@@ -50,8 +50,17 @@ install(PROGRAMS
   scripts/test_motors.py
   scripts/test_rplidar.py
   scripts/tf_monitor.py
-  
+  "scripts/simple_motor_test.py manual"
+  scripts/esp32_diagnostics.py
+  scripts/slam_diagnostic.py
   DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install Python modules
+install(DIRECTORY
+  my_slam_pkg/
+  DESTINATION lib/python3/dist-packages/
+  FILES_MATCHING PATTERN "*.py"
 )
 
 # NEW: Add hardware interface library

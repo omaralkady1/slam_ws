@@ -1,6 +1,5 @@
-
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
@@ -32,6 +31,20 @@ def generate_launch_description():
             description='Baudrate for ESP32 serial connection',
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'lidar_port',
+            default_value='/dev/ttyUSB1',
+            description='Serial port for RPLidar connection',
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'enable_lidar',
+            default_value='true',
+            description='Enable RPLidar A1',
+        )
+    )
     
     # Get package directory
     pkg_share = FindPackageShare('my_slam_pkg').find('my_slam_pkg')
@@ -40,8 +53,10 @@ def generate_launch_description():
     use_sim_hardware = LaunchConfiguration('use_sim_hardware')
     esp32_port = LaunchConfiguration('esp32_port')
     esp32_baudrate = LaunchConfiguration('esp32_baudrate')
+    lidar_port = LaunchConfiguration('lidar_port')
+    enable_lidar = LaunchConfiguration('enable_lidar')
     
-    # Get URDF via xacro - use your existing URDF but with hardware flag
+    # Get URDF via xacro
     robot_description_content = Command([
         FindExecutable(name='xacro'), ' ',
         os.path.join(pkg_share, 'urdf', 'car.urdf.xacro'), ' ',
@@ -50,8 +65,8 @@ def generate_launch_description():
     
     robot_description = {'robot_description': robot_description_content}
     
-    # Use your existing hardware controllers configuration
-    controller_manager_config = os.path.join(pkg_share, 'config', 'hardware_controllers.yaml')
+    # Choose appropriate controller configuration
+    controller_manager_config = os.path.join(pkg_share, 'config', 'esp32_controllers.yaml')
     
     # Robot State Publisher
     robot_state_publisher = Node(
@@ -74,6 +89,7 @@ def generate_launch_description():
             {'use_sim_time': False}
         ],
         output='screen',
+        emulate_tty=True,
     )
     
     # micro-ROS agent for ESP32 communication (only for real hardware)
@@ -83,7 +99,25 @@ def generate_launch_description():
         name='micro_ros_agent',
         arguments=['serial', '--dev', esp32_port, '--baud', esp32_baudrate],
         output='screen',
-        condition=UnlessCondition(use_sim_hardware)
+        condition=UnlessCondition(use_sim_hardware),
+        emulate_tty=True,
+    )
+    
+    # RPLidar node (only when enabled and using real hardware)
+    rplidar_node = Node(
+        package='rplidar_ros',
+        executable='rplidar_composition',
+        name='rplidar_node',
+        parameters=[{
+            'serial_port': lidar_port,
+            'serial_baudrate': 115200,
+            'frame_id': 'lidar_link',
+            'inverted': False,
+            'angle_compensate': True,
+        }],
+        output='screen',
+        condition=IfCondition(enable_lidar),
+        emulate_tty=True,
     )
     
     # Start joint state broadcaster
@@ -131,16 +165,36 @@ def generate_launch_description():
         parameters=[{'use_sim_time': False}]
     )
     
+    # Optional: Add diagnostics for hardware monitoring
+    hardware_diagnostics = Node(
+        package='my_slam_pkg',
+        executable='rplidar_diagnostics.py',
+        name='hardware_diagnostics',
+        output='screen',
+        condition=IfCondition(enable_lidar),
+        parameters=[{'use_sim_time': False}]
+    )
+    
+    # Add a delay to ensure micro-ROS agent starts first
+    delayed_nodes = TimerAction(
+        period=3.0,
+        actions=[
+            controller_manager,
+            joint_state_broadcaster_spawner,
+            diff_drive_controller_spawner_delay,
+        ]
+    )
+    
     # Create the launch description
     ld = LaunchDescription(declared_arguments)
     
-    # Add all nodes
+    # Add all nodes in order
     ld.add_action(robot_state_publisher)
-    ld.add_action(controller_manager)
-    ld.add_action(micro_ros_agent)  # Only runs when not using sim hardware
-    ld.add_action(joint_state_broadcaster_spawner)
-    ld.add_action(diff_drive_controller_spawner_delay)
+    ld.add_action(micro_ros_agent)  # Start micro-ROS agent first
+    ld.add_action(rplidar_node)     # Start lidar
+    ld.add_action(delayed_nodes)    # Start controllers after delay
     ld.add_action(twist_mux)
     ld.add_action(static_tf_base_footprint_to_base_link)
+    ld.add_action(hardware_diagnostics)
     
     return ld

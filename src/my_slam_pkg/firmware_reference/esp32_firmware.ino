@@ -6,144 +6,116 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 
-#include <std_msgs/msg/int32.h>
-#include <std_msgs/msg/float32.h>
 #include <sensor_msgs/msg/joint_state.h>
 #include <geometry_msgs/msg/twist.h>
-#include <nav_msgs/msg/odometry.h>
 #include <std_msgs/msg/string.h>
 
-// --- IMPORTANT NOTE ---
-// This version uses analogWrite() as a WORKAROUND for PWM control
-// because ledcSetup/ledcAttachPin/ledcWrite might be unavailable
-// in older/corrupted ESP32 Arduino Core installations.
-// --> UPDATE YOUR ESP32 CORE for proper LEDC PWM control! <--
-// The PWM_FREQUENCY and PWM_RESOLUTION defines below may not be effective.
-// --- END IMPORTANT NOTE ---
+// ESP32 specific includes
+#include <WiFi.h>
 
+// === TRANSPORT CONFIGURATION ===
+#define USE_SERIAL_TRANSPORT    // Use USB Serial connection
+// #define USE_WIFI_TRANSPORT   // Use WiFi connection
 
-// Constants for motor pins
-#define MOTOR_FL_EN_PIN 25    // Front Left Motor Enable Pin (PWM) - VERIFY PIN 25 IS FREE!
-#define MOTOR_FL_DIR1_PIN 26  // Front Left Motor Direction Pin 1
-#define MOTOR_FL_DIR2_PIN 27  // Front Left Motor Direction Pin 2
-#define MOTOR_FL_ENC_A_PIN 34 // Front Left Motor Encoder A
-#define MOTOR_FL_ENC_B_PIN 35 // Front Left Motor Encoder B
+#ifdef USE_WIFI_TRANSPORT
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* agent_ip = "192.168.1.100";
+const int agent_port = 8888;
+#endif
 
-#define MOTOR_FR_EN_PIN 14    // Front Right Motor Enable Pin (PWM)
-#define MOTOR_FR_DIR1_PIN 12  // Front Right Motor Direction Pin 1
-#define MOTOR_FR_DIR2_PIN 13  // Front Right Motor Direction Pin 2
-#define MOTOR_FR_ENC_A_PIN 36 // Front Right Motor Encoder A
-#define MOTOR_FR_ENC_B_PIN 22 // Front Right Motor Encoder B
+// === HARDWARE CONFIGURATION ===
+// Motor pins - Front Left (FL)
+#define MOTOR_FL_EN_PIN 25
+#define MOTOR_FL_DIR1_PIN 26
+#define MOTOR_FL_DIR2_PIN 27
+#define MOTOR_FL_ENC_A_PIN 34
+#define MOTOR_FL_ENC_B_PIN 35
 
-#define MOTOR_RL_EN_PIN 33    // Rear Left Motor Enable Pin (PWM)
-#define MOTOR_RL_DIR1_PIN 32  // Rear Left Motor Direction Pin 1
-#define MOTOR_RL_DIR2_PIN 18  // Rear Left Motor Direction Pin 2
-#define MOTOR_RL_ENC_A_PIN 23 // Rear Left Motor Encoder A
-#define MOTOR_RL_ENC_B_PIN 21 // Rear Left Motor Encoder B
+// Motor pins - Front Right (FR)
+#define MOTOR_FR_EN_PIN 14
+#define MOTOR_FR_DIR1_PIN 12
+#define MOTOR_FR_DIR2_PIN 13
+#define MOTOR_FR_ENC_A_PIN 36
+#define MOTOR_FR_ENC_B_PIN 39
 
-#define MOTOR_RR_EN_PIN 15    // Rear Right Motor Enable Pin (PWM)
-#define MOTOR_RR_DIR1_PIN 4   // Rear Right Motor Direction Pin 1
-#define MOTOR_RR_DIR2_PIN 16  // Rear Right Motor Direction Pin 2
-#define MOTOR_RR_ENC_A_PIN 19 // Rear Right Motor Encoder A
-#define MOTOR_RR_ENC_B_PIN 5  // Rear Right Motor Encoder B
+// Motor pins - Rear Left (RL)
+#define MOTOR_RL_EN_PIN 33
+#define MOTOR_RL_DIR1_PIN 32
+#define MOTOR_RL_DIR2_PIN 18
+#define MOTOR_RL_ENC_A_PIN 23
+#define MOTOR_RL_ENC_B_PIN 19
 
-// LED pin for status indication
-#define STATUS_LED_PIN 2      // Built-in LED on most ESP32 boards
+// Motor pins - Rear Right (RR)
+#define MOTOR_RR_EN_PIN 15
+#define MOTOR_RR_DIR1_PIN 4
+#define MOTOR_RR_DIR2_PIN 16
+#define MOTOR_RR_ENC_A_PIN 21
+#define MOTOR_RR_ENC_B_PIN 22
 
-// PWM properties (NOTE: MAY NOT BE EFFECTIVE WITH analogWrite WORKAROUND)
-#define PWM_FREQUENCY 20000   // Desired frequency (e.g., 20 kHz)
-#define PWM_RESOLUTION 8      // Desired resolution (e.g., 8-bit)
-#define PWM_MAX_DUTY 255      // Maximum duty cycle for 8-bit resolution
+#define STATUS_LED_PIN 2
 
-// Motor channels/identifiers (used for tracking and function calls)
-#define MOTOR_FL_ID 0 // Using simple IDs instead of LEDC channels now
-#define MOTOR_FR_ID 1
-#define MOTOR_RL_ID 2
-#define MOTOR_RR_ID 3
+// === ROBOT PARAMETERS ===
+#define JOINT_COUNT 4
+#define WHEEL_RADIUS 0.05           // meters
+#define WHEEL_BASE_WIDTH 0.34       // meters
+#define ENCODER_PPR 11              // Physical pulses per revolution
+#define GEAR_RATIO 1.0              // Gearbox reduction ratio
 
-// Robot dimensions - ADJUST TO MATCH YOUR ROBOT
-#define WHEEL_RADIUS 0.05       // meters
-#define WHEEL_BASE_WIDTH 0.34   // meters (distance between left and right wheels)
-#define WHEEL_BASE_LENGTH 0.30  // meters (distance between front and rear wheels)
+// PWM Configuration
+#define PWM_FREQUENCY 20000         // 20 kHz
+#define PWM_RESOLUTION 8            // 8-bit resolution
+#define PWM_MAX_DUTY 255
 
-// Encoder resolution (pulses per revolution) - ADJUST CAREFULLY
-#define ENCODER_PPR 11          // Pulses per revolution of the MOTOR SHAFT (before gearbox)
-#define GEAR_RATIO 1.0          // Gearbox reduction ratio (e.g., 50.0 for 50:1 gearbox)
+// Control parameters
+#define CONTROL_FREQUENCY_HZ 50     // Control loop frequency
+#define JOINT_STATE_FREQUENCY_HZ 20 // Joint state publish frequency
+#define DIAGNOSTIC_FREQUENCY_HZ 1   // Diagnostic publish frequency
+#define WATCHDOG_TIMEOUT_MS 1000    // Command timeout
 
-// PID Constants - THESE REQUIRE TUNING
-#define KP 0.5
-#define KI 0.1
-#define KD 0.01
-#define MAX_PID_OUTPUT 255.0f // Corresponds to max PWM duty
+// PID Constants
+#define KP 2.0f
+#define KI 0.5f  
+#define KD 0.1f
+#define MAX_PID_OUTPUT 255.0f
 #define MIN_PID_OUTPUT -255.0f
 
-// Control loop frequency
-#define CONTROL_FREQUENCY_HZ 50  // 50 Hz control loop
-#define ODOMETRY_FREQUENCY_HZ 20 // 20 Hz odometry publishing
+// === GLOBAL VARIABLES ===
+// Encoder data (volatile for ISR safety)
+volatile long encoder_counts[JOINT_COUNT] = {0, 0, 0, 0};
+long encoder_prev[JOINT_COUNT] = {0, 0, 0, 0};
 
-// Watchdog timeout (ms) - stop motors if no command received
-#define WATCHDOG_TIMEOUT 500
+// Joint state variables
+double joint_positions[JOINT_COUNT] = {0.0, 0.0, 0.0, 0.0};
+double joint_velocities[JOINT_COUNT] = {0.0, 0.0, 0.0, 0.0};
+double joint_efforts[JOINT_COUNT] = {0.0, 0.0, 0.0, 0.0};
 
-// Serial connection baudrate
-#define SERIAL_BAUDRATE 115200
+// Control variables
+double velocity_commands[JOINT_COUNT] = {0.0, 0.0, 0.0, 0.0};
 
-// Interrupt handlers must be global
-volatile long encoder_fl_count = 0;
-volatile long encoder_fr_count = 0;
-volatile long encoder_rl_count = 0;
-volatile long encoder_rr_count = 0;
-volatile long encoder_fl_prev = 0;
-volatile long encoder_fr_prev = 0;
-volatile long encoder_rl_prev = 0;
-volatile long encoder_rr_prev = 0;
+// PID control variables
+float pid_errors[JOINT_COUNT] = {0.0, 0.0, 0.0, 0.0};
+float pid_prev_errors[JOINT_COUNT] = {0.0, 0.0, 0.0, 0.0};
+float pid_error_sums[JOINT_COUNT] = {0.0, 0.0, 0.0, 0.0};
 
-// Target velocities (rad/s for each wheel)
-float target_vel_fl = 0.0;
-float target_vel_fr = 0.0;
-float target_vel_rl = 0.0;
-float target_vel_rr = 0.0;
-
-// Current velocities (rad/s for each wheel)
-float current_vel_fl = 0.0;
-float current_vel_fr = 0.0;
-float current_vel_rl = 0.0;
-float current_vel_rr = 0.0;
-
-// PID variables
-float error_fl = 0.0, error_prev_fl = 0.0, error_sum_fl = 0.0;
-float error_fr = 0.0, error_prev_fr = 0.0, error_sum_fr = 0.0;
-float error_rl = 0.0, error_prev_rl = 0.0, error_sum_rl = 0.0;
-float error_rr = 0.0, error_prev_rr = 0.0, error_sum_rr = 0.0;
-
-// Odometry variables
-float odom_x = 0.0;
-float odom_y = 0.0;
-float odom_theta = 0.0;
-float odom_linear_x = 0.0;  // Commanded linear_x, used for reporting in odom msg
-float odom_angular_z = 0.0; // Commanded angular_z, used for reporting in odom msg
-
-// Time tracking
+// Timing variables
 unsigned long last_control_time = 0;
-unsigned long last_vel_calc_time = 0;
+unsigned long last_joint_state_time = 0;
 unsigned long last_cmd_time = 0;
-unsigned long system_uptime = 0;
+unsigned long last_diagnostic_time = 0;
 
-// Connection status
-bool connected_to_agent = false;
+// Connection management
+bool ros_connected = false;
+int connection_attempts = 0;
 
-// micro-ROS variables
+// micro-ROS entities
 rcl_subscription_t twist_subscriber;
 rcl_publisher_t joint_state_publisher;
-rcl_publisher_t odom_publisher;
 rcl_publisher_t diagnostic_publisher;
-rcl_timer_t control_timer;
-rcl_timer_t joint_state_timer;
-rcl_timer_t odom_timer;
-rcl_timer_t diagnostic_timer;
 
+// Messages
 geometry_msgs__msg__Twist twist_msg;
 sensor_msgs__msg__JointState joint_state_msg;
-nav_msgs__msg__Odometry odom_msg;
 std_msgs__msg__String diagnostic_msg;
 
 rclc_executor_t executor;
@@ -151,399 +123,562 @@ rclc_support_t support;
 rcl_allocator_t allocator;
 rcl_node_t node;
 
-// Joint state message buffer
-#define JOINT_COUNT 4
+// Joint names for ros2_control compatibility
 const char* joint_names[JOINT_COUNT] = {
   "front_left_wheel_joint",
-  "front_right_wheel_joint",
+  "front_right_wheel_joint", 
   "rear_left_wheel_joint",
   "rear_right_wheel_joint"
 };
-double positions[JOINT_COUNT];  // Global, data assigned to msg
-double velocities[JOINT_COUNT]; // Global, data assigned to msg
-double efforts[JOINT_COUNT];    // Global, data assigned to msg
 
-// Diagnostic buffer
-char diagnostic_buffer[100];
+char diagnostic_buffer[200];
+bool joint_state_memory_initialized = false;
 
-// Flag to ensure joint_state_msg memory is allocated only once
-bool joint_msg_memory_initialized = false;
+// === FUNCTION PROTOTYPES ===
+void IRAM_ATTR encoderISR_FL();
+void IRAM_ATTR encoderISR_FR(); 
+void IRAM_ATTR encoderISR_RL();
+void IRAM_ATTR encoderISR_RR();
 
-// Function prototypes
-void IRAM_ATTR encoderISR_FL_A();
-void IRAM_ATTR encoderISR_FR_A();
-void IRAM_ATTR encoderISR_RL_A();
-void IRAM_ATTR encoderISR_RR_A();
-void setupMotors(); // Modified to use analogWrite
+void setupHardware();
+void setupMotors();
 void setupEncoders();
-void setMotorSpeed(int motor_id, float speed_normalized); // Modified to use analogWrite
-void controlCallback(rcl_timer_t* timer, int64_t last_call_time);
-void jointStateCallback(rcl_timer_t* timer, int64_t last_call_time);
-void odomCallback(rcl_timer_t* timer, int64_t last_call_time);
-void diagnosticCallback(rcl_timer_t* timer, int64_t last_call_time);
+void setupMicroROS();
+bool initMicroROS();
+void cleanupMicroROS();
+
+void controlLoop();
+void updateJointStates(float dt);
+float calculatePID(int joint_id, float setpoint, float process_value, float dt);
+void setMotorSpeed(int motor_id, float speed_normalized);
+void stopAllMotors();
+
 void twistCallback(const void* msgin);
-float calculatePID(float target, float current, float& error, float& prev_error, float& error_sum, float dt);
-void calculateWheelVelocitiesFromTwist(float linear_x, float angular_z);
-void updateOdometry(float dt);
-void stopMotors();
-void initMicroROS();
+void publishJointStates();
+void publishDiagnostics();
+
 void blinkLED(int times, int duration_ms);
-void error_loop_handler(const char* message); // For critical errors
+
+//*****************************************************************************
+// ENCODER ISRs
+//*****************************************************************************
+void IRAM_ATTR encoderISR_FL() {
+  if (digitalRead(MOTOR_FL_ENC_A_PIN) == digitalRead(MOTOR_FL_ENC_B_PIN)) {
+    encoder_counts[0]--;
+  } else {
+    encoder_counts[0]++;
+  }
+}
+
+void IRAM_ATTR encoderISR_FR() {
+  if (digitalRead(MOTOR_FR_ENC_A_PIN) == digitalRead(MOTOR_FR_ENC_B_PIN)) {
+    encoder_counts[1]++;
+  } else {
+    encoder_counts[1]--;
+  }
+}
+
+void IRAM_ATTR encoderISR_RL() {
+  if (digitalRead(MOTOR_RL_ENC_A_PIN) == digitalRead(MOTOR_RL_ENC_B_PIN)) {
+    encoder_counts[2]--;
+  } else {
+    encoder_counts[2]++;
+  }
+}
+
+void IRAM_ATTR encoderISR_RR() {
+  if (digitalRead(MOTOR_RR_ENC_A_PIN) == digitalRead(MOTOR_RR_ENC_B_PIN)) {
+    encoder_counts[3]++;
+  } else {
+    encoder_counts[3]--;
+  }
+}
 
 //*****************************************************************************
 // SETUP FUNCTION
 //*****************************************************************************
 void setup() {
-  Serial.begin(SERIAL_BAUDRATE);
-  Serial.println("ESP32 4 Motor Controller (USB Serial) starting...");
+  Serial.begin(115200);
+  delay(2000);
+  Serial.println("=== ESP32 4-Motor Test ===");
+  Serial.println("Initializing hardware...");
 
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
 
-  setupMotors(); // Uses the analogWrite workaround version
-  setupEncoders();
+  setupHardware(); // This initializes pins and PWM
+  // setupMicroROS(); // Keep this commented for now
 
-  // Initialize micro-ROS transport over USB serial
-  set_microros_serial_transports(Serial);
-  delay(2000); // Give Serial time to initialize
-  
-  initMicroROS(); // Can call error_loop_handler if critical init fails
+  blinkLED(3, 200);
+  Serial.println("Hardware setup complete. Testing motors...");
 
-  last_control_time = millis();
-  last_vel_calc_time = millis();
-  last_cmd_time = millis();
-  system_uptime = 0;
+  // --- TEMPORARY MOTOR TEST CODE ---
+  // Test Front Left motor
+  Serial.println("Testing Motor FL (0) - Forward");
+  setMotorSpeed(0, 0.5); // Half speed forward
+  delay(3000);
+  Serial.println("Testing Motor FL (0) - Backward");
+  setMotorSpeed(0, -0.5); // Half speed backward
+  delay(3000);
+  Serial.println("Stopping Motor FL (0)");
+  setMotorSpeed(0, 0.0);
+  delay(1000);
 
-  blinkLED(3, 150);
-  Serial.println("Initialization complete. Attempting to connect to micro-ROS agent...");
+  // Repeat for other motors (uncomment one by one or all)
+  Serial.println("Testing Motor FR (1) - Forward");
+  setMotorSpeed(1, 0.5);
+  delay(3000);
+  setMotorSpeed(1, 0.0);
+  delay(1000);
+
+  // Test Rear Left motor
+  Serial.println("Testing Motor RL (2) - Forward");
+  setMotorSpeed(2, 0.5);
+  delay(3000);
+  setMotorSpeed(2, 0.0);
+  delay(1000);
+
+  // Test Rear Right motor
+  Serial.println("Testing Motor RR (3) - Forward");
+  setMotorSpeed(3, 0.5);
+  delay(3000);
+  setMotorSpeed(3, 0.0);
+  delay(1000);
+  // --- END TEMPORARY MOTOR TEST CODE ---
+
+  Serial.println("Motor test complete. Now proceed with ROS setup (if enabled).");
+  // last_control_time = millis();
+  // last_joint_state_time = millis();
+  // last_cmd_time = millis();
+  // last_diagnostic_time = millis();
 }
 
 //*****************************************************************************
-// MAIN LOOP FUNCTION
+// MAIN LOOP
 //*****************************************************************************
 void loop() {
-  system_uptime = millis() / 1000;
-
-  static bool was_connected = false;
-  if (!connected_to_agent) { // Try to connect/reconnect if not already connected
-      connected_to_agent = rmw_uros_ping_agent(100, 1) == RMW_RET_OK; // Short ping
-  }
-
-  if (connected_to_agent) {
-    if (!was_connected) {
-      Serial.println("Connected to micro-ROS agent!");
-      digitalWrite(STATUS_LED_PIN, HIGH); // Solid LED for connected
-      was_connected = true;
-    }
-
-    rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10)); // Process ROS events
-
-    // Watchdog check
-    if (millis() - last_cmd_time > WATCHDOG_TIMEOUT) {
-      if (target_vel_fl != 0 || target_vel_fr != 0 || target_vel_rl != 0 || target_vel_rr != 0) {
-        Serial.println("Watchdog timeout: Stopping motors.");
-        stopMotors();
+  // Keep empty or just a small delay for this test phase
+  delay(10);
+  
+  // Comment out all the ROS logic for now
+  /*
+  unsigned long current_time = millis();
+  
+  // Connection management
+  if (!ros_connected) {
+    if (current_time - last_diagnostic_time > 3000) {
+      last_diagnostic_time = current_time;
+      Serial.printf("Attempting ROS connection (attempt %d)...\n", ++connection_attempts);
+      
+      if (connection_attempts > 1) {
+        cleanupMicroROS();
       }
-    }
-  } else { // Not connected or lost connection
-    if (was_connected) {
-      Serial.println("Connection to micro-ROS agent lost!");
-      stopMotors();
-      digitalWrite(STATUS_LED_PIN, LOW); // LED off for disconnected
-      was_connected = false;
-    }
-
-    // Reconnection attempt logic
-    static unsigned long last_reconnect_attempt = 0;
-    if (millis() - last_reconnect_attempt > 2000) { // Try every 2 seconds
-      last_reconnect_attempt = millis();
-      blinkLED(1, 50); // Quick blink for attempt
-      Serial.println("Attempting to (re)connect to agent...");
-
-      // Re-initialize ROS entities
-      initMicroROS();
-
-      // Try pinging again
-      connected_to_agent = rmw_uros_ping_agent(100, 1) == RMW_RET_OK;
-      if(connected_to_agent){
-          Serial.println("Reconnected successfully!");
-          digitalWrite(STATUS_LED_PIN, HIGH);
-          was_connected = true;
+      
+      ros_connected = initMicroROS();
+      if (ros_connected) {
+        Serial.println("ros2_control interface connected!");
+        digitalWrite(STATUS_LED_PIN, HIGH);
+        connection_attempts = 0;
       } else {
-          Serial.println("Still not connected after re-init attempt.");
+        Serial.println("Connection failed, retrying...");
+        blinkLED(2, 100);
       }
     }
   }
-}
 
-//*****************************************************************************
-// ERROR HANDLING FUNCTION
-//*****************************************************************************
-void error_loop_handler(const char* message) {
-  Serial.print("CRITICAL ERROR: ");
-  Serial.println(message);
-  Serial.println("System halted. Please reset.");
-  while(true) {
-    blinkLED(1, 250); // Slower, noticeable error blink
-    delay(750);
-  }
-}
-
-//*****************************************************************************
-// micro-ROS INITIALIZATION
-//*****************************************************************************
-void initMicroROS() {
-  Serial.println("Initializing micro-ROS entities...");
-  rcl_ret_t ret;
-
-  allocator = rcl_get_default_allocator();
-
-  // Initialize support
-  ret = rclc_support_init(&support, 0, NULL, &allocator);
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init rclc_support."); return; }
-
-  // Initialize node
-  ret = rclc_node_init_default(&node, "esp32_motor_controller", "", &support);
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init rclc_node."); return; }
-  Serial.println("ROS2 node created.");
-
-  // --- Initialize Joint State Message ---
-  joint_state_msg.header.frame_id.data = (char*)"base_link";
-  joint_state_msg.header.frame_id.size = strlen(joint_state_msg.header.frame_id.data);
-  joint_state_msg.header.frame_id.capacity = joint_state_msg.header.frame_id.size + 1;
-
-  // Allocate memory for joint names only once
-  if (!joint_msg_memory_initialized) {
-    joint_state_msg.name.capacity = JOINT_COUNT;
-    joint_state_msg.name.size = JOINT_COUNT;
-    joint_state_msg.name.data = (rosidl_runtime_c__String*)malloc(JOINT_COUNT * sizeof(rosidl_runtime_c__String));
-    if (joint_state_msg.name.data == NULL) { error_loop_handler("Failed to allocate joint_state_msg.name.data"); return; }
-
-    bool alloc_ok = true;
-    for (int i = 0; i < JOINT_COUNT; i++) {
-      size_t len = strlen(joint_names[i]);
-      joint_state_msg.name.data[i].data = (char*)malloc((len + 1) * sizeof(char));
-      if (joint_state_msg.name.data[i].data == NULL) {
-          char err_buf[50]; sprintf(err_buf, "Failed to alloc joint_state_msg.name.data[%d]", i);
-          error_loop_handler(err_buf); alloc_ok = false; break; // Exit loop on first failure
-      }
-      joint_state_msg.name.data[i].size = len;
-      joint_state_msg.name.data[i].capacity = len + 1;
-      memcpy(joint_state_msg.name.data[i].data, joint_names[i], len + 1);
+  if (ros_connected) {
+    // Process ROS callbacks
+    rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1));
+    
+    // Safety watchdog
+    if (current_time - last_cmd_time > WATCHDOG_TIMEOUT_MS) {
+      stopAllMotors();
     }
-    if (!alloc_ok) return; // Stop initialization if allocation failed
-
-    joint_msg_memory_initialized = true;
-    Serial.println("Joint state message names allocated.");
+    
+    // Publish joint states
+    if (current_time - last_joint_state_time >= (1000 / JOINT_STATE_FREQUENCY_HZ)) {
+      publishJointStates();
+      last_joint_state_time = current_time;
+    }
+    
+    // Publish diagnostics
+    if (current_time - last_diagnostic_time >= (1000 / DIAGNOSTIC_FREQUENCY_HZ)) {
+      publishDiagnostics();
+      last_diagnostic_time = current_time;
+    }
+  } else {
+    stopAllMotors();
   }
-  // Assign pointers to global data arrays
-  joint_state_msg.position.data = positions; joint_state_msg.position.size = JOINT_COUNT; joint_state_msg.position.capacity = JOINT_COUNT;
-  joint_state_msg.velocity.data = velocities; joint_state_msg.velocity.size = JOINT_COUNT; joint_state_msg.velocity.capacity = JOINT_COUNT;
-  joint_state_msg.effort.data = efforts; joint_state_msg.effort.size = JOINT_COUNT; joint_state_msg.effort.capacity = JOINT_COUNT;
 
-  // --- Initialize Odometry Message ---
-  odom_msg.header.frame_id.data = (char*)"odom";
-  odom_msg.header.frame_id.size = strlen(odom_msg.header.frame_id.data);
-  odom_msg.header.frame_id.capacity = odom_msg.header.frame_id.size + 1;
-  odom_msg.child_frame_id.data = (char*)"base_link";
-  odom_msg.child_frame_id.size = strlen(odom_msg.child_frame_id.data);
-  odom_msg.child_frame_id.capacity = odom_msg.child_frame_id.size + 1;
-
-  // --- Initialize Diagnostic Message ---
-  diagnostic_msg.data.capacity = sizeof(diagnostic_buffer);
-  diagnostic_msg.data.size = 0;
-  diagnostic_msg.data.data = diagnostic_buffer;
-
-  // --- Create Subscription ---
-  ret = rclc_subscription_init_default(&twist_subscriber, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "cmd_vel");
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init twist_subscriber."); return; }
-
-  // --- Create Publishers ---
-  ret = rclc_publisher_init_default(&joint_state_publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, JointState), "joint_states");
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init joint_state_publisher."); return; }
-  ret = rclc_publisher_init_default(&odom_publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry), "odom");
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init odom_publisher."); return; }
-  ret = rclc_publisher_init_default(&diagnostic_publisher, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "esp32/diagnostics");
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init diagnostic_publisher."); return; }
-  Serial.println("Publishers and subscriber created.");
-
-  // --- Create Timers ---
-  ret = rclc_timer_init_default(&control_timer, &support, RCL_MS_TO_NS(1000 / CONTROL_FREQUENCY_HZ), controlCallback);
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init control_timer."); return; }
-  ret = rclc_timer_init_default(&joint_state_timer, &support, RCL_MS_TO_NS(100), jointStateCallback); // 10Hz
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init joint_state_timer."); return; }
-  ret = rclc_timer_init_default(&odom_timer, &support, RCL_MS_TO_NS(1000 / ODOMETRY_FREQUENCY_HZ), odomCallback);
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init odom_timer."); return; }
-  ret = rclc_timer_init_default(&diagnostic_timer, &support, RCL_MS_TO_NS(5000), diagnosticCallback); // 0.2Hz
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init diagnostic_timer."); return; }
-  Serial.println("Timers created.");
-
-  // --- Create Executor ---
-  ret = rclc_executor_init(&executor, &support.context, 5, &allocator); // 1 sub + 4 timers = 5 handles
-  if (ret != RCL_RET_OK) { error_loop_handler("Failed to init executor."); return; }
-  rclc_executor_add_timer(&executor, &control_timer);
-  rclc_executor_add_timer(&executor, &joint_state_timer);
-  rclc_executor_add_timer(&executor, &odom_timer);
-  rclc_executor_add_timer(&executor, &diagnostic_timer);
-  rclc_executor_add_subscription(&executor, &twist_subscriber, &twist_msg, &twistCallback, ON_NEW_DATA);
-  Serial.println("Executor configured. micro-ROS initialization sequence complete.");
+  // Always run control loop
+  if (current_time - last_control_time >= (1000 / CONTROL_FREQUENCY_HZ)) {
+    controlLoop();
+    last_control_time = current_time;
+  }
+  */
 }
 
-
 //*****************************************************************************
-// MOTOR & ENCODER SETUP FUNCTIONS
+// HARDWARE SETUP
 //*****************************************************************************
+void setupHardware() {
+  setupMotors();
+  setupEncoders();
+  Serial.println("Hardware initialization complete.");
+}
 
-// ***** MODIFIED: Using analogWrite WORKAROUND *****
 void setupMotors() {
+  // Configure direction pins
   pinMode(MOTOR_FL_DIR1_PIN, OUTPUT); pinMode(MOTOR_FL_DIR2_PIN, OUTPUT);
   pinMode(MOTOR_FR_DIR1_PIN, OUTPUT); pinMode(MOTOR_FR_DIR2_PIN, OUTPUT);
   pinMode(MOTOR_RL_DIR1_PIN, OUTPUT); pinMode(MOTOR_RL_DIR2_PIN, OUTPUT);
   pinMode(MOTOR_RR_DIR1_PIN, OUTPUT); pinMode(MOTOR_RR_DIR2_PIN, OUTPUT);
 
-  // Set EN pins as OUTPUT for analogWrite
-  pinMode(MOTOR_FL_EN_PIN, OUTPUT);
-  pinMode(MOTOR_FR_EN_PIN, OUTPUT);
-  pinMode(MOTOR_RL_EN_PIN, OUTPUT);
-  pinMode(MOTOR_RR_EN_PIN, OUTPUT);
+  // Setup PWM - try new API first, fallback to old API
+  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    // New ESP32 Arduino Core (3.x)
+    ledcAttach(MOTOR_FL_EN_PIN, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcAttach(MOTOR_FR_EN_PIN, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcAttach(MOTOR_RL_EN_PIN, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcAttach(MOTOR_RR_EN_PIN, PWM_FREQUENCY, PWM_RESOLUTION);
+  #else
+    // Older ESP32 Arduino Core (2.x and earlier)
+    ledcSetup(0, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcSetup(1, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcSetup(2, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcSetup(3, PWM_FREQUENCY, PWM_RESOLUTION);
+    
+    ledcAttachPin(MOTOR_FL_EN_PIN, 0);
+    ledcAttachPin(MOTOR_FR_EN_PIN, 1);
+    ledcAttachPin(MOTOR_RL_EN_PIN, 2);
+    ledcAttachPin(MOTOR_RR_EN_PIN, 3);
+  #endif
 
-  // Initialize motors to stopped state (PWM duty 0)
-  analogWrite(MOTOR_FL_EN_PIN, 0);
-  analogWrite(MOTOR_FR_EN_PIN, 0);
-  analogWrite(MOTOR_RL_EN_PIN, 0);
-  analogWrite(MOTOR_RR_EN_PIN, 0);
-
-  // Set direction pins to default (brake/coast)
-  digitalWrite(MOTOR_FL_DIR1_PIN, LOW); digitalWrite(MOTOR_FL_DIR2_PIN, LOW);
-  digitalWrite(MOTOR_FR_DIR1_PIN, LOW); digitalWrite(MOTOR_FR_DIR2_PIN, LOW);
-  digitalWrite(MOTOR_RL_DIR1_PIN, LOW); digitalWrite(MOTOR_RL_DIR2_PIN, LOW);
-  digitalWrite(MOTOR_RR_DIR1_PIN, LOW); digitalWrite(MOTOR_RR_DIR2_PIN, LOW);
-
-  Serial.println("Motors initialized using basic analogWrite (PWM frequency/resolution may not match defines). UPDATE ESP32 CORE FOR LEDC!");
+  stopAllMotors();
+  Serial.printf("Motors initialized with %d Hz PWM\n", PWM_FREQUENCY);
 }
 
 void setupEncoders() {
+  // Configure encoder pins with pullups
   pinMode(MOTOR_FL_ENC_A_PIN, INPUT_PULLUP); pinMode(MOTOR_FL_ENC_B_PIN, INPUT_PULLUP);
   pinMode(MOTOR_FR_ENC_A_PIN, INPUT_PULLUP); pinMode(MOTOR_FR_ENC_B_PIN, INPUT_PULLUP);
   pinMode(MOTOR_RL_ENC_A_PIN, INPUT_PULLUP); pinMode(MOTOR_RL_ENC_B_PIN, INPUT_PULLUP);
   pinMode(MOTOR_RR_ENC_A_PIN, INPUT_PULLUP); pinMode(MOTOR_RR_ENC_B_PIN, INPUT_PULLUP);
 
-  attachInterrupt(digitalPinToInterrupt(MOTOR_FL_ENC_A_PIN), encoderISR_FL_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(MOTOR_FR_ENC_A_PIN), encoderISR_FR_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(MOTOR_RL_ENC_A_PIN), encoderISR_RL_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(MOTOR_RR_ENC_A_PIN), encoderISR_RR_A, CHANGE);
+  // Attach interrupts
+  attachInterrupt(digitalPinToInterrupt(MOTOR_FL_ENC_A_PIN), encoderISR_FL, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MOTOR_FR_ENC_A_PIN), encoderISR_FR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MOTOR_RL_ENC_A_PIN), encoderISR_RL, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MOTOR_RR_ENC_A_PIN), encoderISR_RR, CHANGE);
 
-  Serial.println("Encoders initialized with interrupts.");
+  Serial.printf("Encoders initialized (%d PPR, %.1fx gear ratio)\n", ENCODER_PPR, GEAR_RATIO);
 }
 
 //*****************************************************************************
-// ENCODER INTERRUPT SERVICE ROUTINES (ISRs)
+// MICRO-ROS SETUP
 //*****************************************************************************
-// Adjust logic based on your wiring and desired positive direction count
-void IRAM_ATTR encoderISR_FL_A() { // Front Left
-  if (digitalRead(MOTOR_FL_ENC_A_PIN) == digitalRead(MOTOR_FL_ENC_B_PIN)) { encoder_fl_count--; } else { encoder_fl_count++; }
+void setupMicroROS() {
+#ifdef USE_SERIAL_TRANSPORT
+  set_microros_transports();
+  Serial.println("micro-ROS serial transport configured");
+#endif
+
+#ifdef USE_WIFI_TRANSPORT
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.printf("WiFi connected! IP: %s\n", WiFi.localIP().toString().c_str());
+  
+  set_microros_wifi_transports(ssid, password, agent_ip, agent_port);
+  Serial.println("micro-ROS WiFi transport configured");
+#endif
 }
-void IRAM_ATTR encoderISR_FR_A() { // Front Right (often opposite FL for forward motion)
-  if (digitalRead(MOTOR_FR_ENC_A_PIN) == digitalRead(MOTOR_FR_ENC_B_PIN)) { encoder_fr_count++; } else { encoder_fr_count--; }
-}
-void IRAM_ATTR encoderISR_RL_A() { // Rear Left
-  if (digitalRead(MOTOR_RL_ENC_A_PIN) == digitalRead(MOTOR_RL_ENC_B_PIN)) { encoder_rl_count--; } else { encoder_rl_count++; }
-}
-void IRAM_ATTR encoderISR_RR_A() { // Rear Right (often opposite RL for forward motion)
-  if (digitalRead(MOTOR_RR_ENC_A_PIN) == digitalRead(MOTOR_RR_ENC_B_PIN)) { encoder_rr_count++; } else { encoder_rr_count--; }
-}
 
+bool initMicroROS() {
+  allocator = rcl_get_default_allocator();
 
-//*****************************************************************************
-// MOTOR CONTROL FUNCTIONS
-//*****************************************************************************
-
-// ***** MODIFIED: Set motor speed using basic analogWrite WORKAROUND *****
-// motor_id: Use MOTOR_FL_ID, MOTOR_FR_ID, etc.
-// speed_normalized: -1.0 (full reverse) to 1.0 (full forward)
-void setMotorSpeed(int motor_id, float speed_normalized) {
-  int pwm_value;
-  bool forward_direction;
-  int dir1_pin, dir2_pin, en_pin;
-
-  speed_normalized = constrain(speed_normalized, -1.0, 1.0);
-  forward_direction = (speed_normalized >= 0.0);
-  pwm_value = (int)(abs(speed_normalized) * PWM_MAX_DUTY); // PWM_MAX_DUTY is 255
-  pwm_value = constrain(pwm_value, 0, PWM_MAX_DUTY);
-
-  // Map motor_id to pins
-  switch (motor_id) {
-    case MOTOR_FL_ID:
-      dir1_pin = MOTOR_FL_DIR1_PIN; dir2_pin = MOTOR_FL_DIR2_PIN; en_pin = MOTOR_FL_EN_PIN; break;
-    case MOTOR_FR_ID:
-      dir1_pin = MOTOR_FR_DIR1_PIN; dir2_pin = MOTOR_FR_DIR2_PIN; en_pin = MOTOR_FR_EN_PIN; break;
-    case MOTOR_RL_ID:
-      dir1_pin = MOTOR_RL_DIR1_PIN; dir2_pin = MOTOR_RL_DIR2_PIN; en_pin = MOTOR_RL_EN_PIN; break;
-    case MOTOR_RR_ID:
-      dir1_pin = MOTOR_RR_DIR1_PIN; dir2_pin = MOTOR_RR_DIR2_PIN; en_pin = MOTOR_RR_EN_PIN; break;
-    default: return; // Invalid motor ID
+  // Initialize support
+  if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) {
+    Serial.println("Failed to initialize RCL support");
+    return false;
   }
 
-  // Set direction (adjust HIGH/LOW logic if your H-bridge is different)
-  digitalWrite(dir1_pin, forward_direction ? HIGH : LOW);
-  digitalWrite(dir2_pin, forward_direction ? LOW : HIGH);
+  // Initialize node
+  if (rclc_node_init_default(&node, "esp32_hardware_interface", "", &support) != RCL_RET_OK) {
+    Serial.println("Failed to initialize RCL node");
+    return false;
+  }
 
-  // Set speed using analogWrite
-  analogWrite(en_pin, pwm_value);
+  // Initialize joint state message (only once)
+  if (!joint_state_memory_initialized) {
+    // Header
+    joint_state_msg.header.frame_id.data = (char*)"base_link";
+    joint_state_msg.header.frame_id.size = strlen("base_link");
+    joint_state_msg.header.frame_id.capacity = strlen("base_link") + 1;
+
+    // Allocate joint names
+    joint_state_msg.name.capacity = JOINT_COUNT;
+    joint_state_msg.name.size = JOINT_COUNT;
+    joint_state_msg.name.data = (rosidl_runtime_c__String*)malloc(JOINT_COUNT * sizeof(rosidl_runtime_c__String));
+    
+    if (!joint_state_msg.name.data) {
+      Serial.println("Failed to allocate joint names memory");
+      return false;
+    }
+
+    for (int i = 0; i < JOINT_COUNT; i++) {
+      size_t len = strlen(joint_names[i]);
+      joint_state_msg.name.data[i].data = (char*)malloc((len + 1) * sizeof(char));
+      if (!joint_state_msg.name.data[i].data) {
+        Serial.printf("Failed to allocate memory for joint name %d\n", i);
+        return false;
+      }
+      joint_state_msg.name.data[i].size = len;
+      joint_state_msg.name.data[i].capacity = len + 1;
+      strcpy(joint_state_msg.name.data[i].data, joint_names[i]);
+    }
+
+    // Assign data arrays
+    joint_state_msg.position.data = joint_positions;
+    joint_state_msg.position.size = JOINT_COUNT;
+    joint_state_msg.position.capacity = JOINT_COUNT;
+    
+    joint_state_msg.velocity.data = joint_velocities;
+    joint_state_msg.velocity.size = JOINT_COUNT;
+    joint_state_msg.velocity.capacity = JOINT_COUNT;
+    
+    joint_state_msg.effort.data = joint_efforts;
+    joint_state_msg.effort.size = JOINT_COUNT;
+    joint_state_msg.effort.capacity = JOINT_COUNT;
+
+    joint_state_memory_initialized = true;
+  }
+
+  // Initialize diagnostic message
+  diagnostic_msg.data.capacity = sizeof(diagnostic_buffer);
+  diagnostic_msg.data.size = 0;
+  diagnostic_msg.data.data = diagnostic_buffer;
+
+  // Create subscription for cmd_vel
+  if (rclc_subscription_init_default(&twist_subscriber, &node,
+      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "cmd_vel") != RCL_RET_OK) {
+    Serial.println("Failed to create twist subscriber");
+    return false;
+  }
+
+  // Create publishers
+  if (rclc_publisher_init_default(&joint_state_publisher, &node,
+      ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, JointState), "joint_states") != RCL_RET_OK) {
+    Serial.println("Failed to create joint state publisher");
+    return false;
+  }
+
+  if (rclc_publisher_init_default(&diagnostic_publisher, &node,
+      ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "esp32/diagnostics") != RCL_RET_OK) {
+    Serial.println("Failed to create diagnostic publisher");
+    return false;
+  }
+
+  // Create executor
+  if (rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK) {
+    Serial.println("Failed to create executor");
+    return false;
+  }
+
+  // Add subscription to executor
+  rclc_executor_add_subscription(&executor, &twist_subscriber, &twist_msg, &twistCallback, ON_NEW_DATA);
+
+  Serial.println("ros2_control interface initialized successfully");
+  return true;
 }
 
-void stopMotors() {
-  setMotorSpeed(MOTOR_FL_ID, 0.0);
-  setMotorSpeed(MOTOR_FR_ID, 0.0);
-  setMotorSpeed(MOTOR_RL_ID, 0.0);
-  setMotorSpeed(MOTOR_RR_ID, 0.0);
-
-  target_vel_fl = 0.0; target_vel_fr = 0.0;
-  target_vel_rl = 0.0; target_vel_rr = 0.0;
-
-  // Reset PID integral sums on stop to prevent windup issues on restart
-  error_sum_fl = 0; error_sum_fr = 0; error_sum_rl = 0; error_sum_rr = 0;
+void cleanupMicroROS() {
+  if (ros_connected) {
+    // Note: Cleanup order is important to avoid crashes
+    rclc_executor_fini(&executor);
+    rcl_publisher_fini(&diagnostic_publisher, &node);
+    rcl_publisher_fini(&joint_state_publisher, &node);
+    rcl_subscription_fini(&twist_subscriber, &node);
+    rcl_node_fini(&node);
+    rclc_support_fini(&support);
+    ros_connected = false;
+  }
 }
 
 //*****************************************************************************
-// PID CONTROLLER
+// CONTROL FUNCTIONS
 //*****************************************************************************
-float calculatePID(float target, float current, float& error, float& prev_error, float& error_sum, float dt) {
-  if (dt <= 0) return 0; // Avoid division by zero or weird behavior
+void controlLoop() {
+  unsigned long now = millis();
+  float dt = (now - last_control_time) / 1000.0f;
+  
+  if (dt <= 0 || dt > 0.1f) {
+    dt = 1.0f / CONTROL_FREQUENCY_HZ;
+  }
 
-  error = target - current;
+  updateJointStates(dt);
 
-  // Integral term with anti-windup
+  // PID velocity control for each joint
+  for (int i = 0; i < JOINT_COUNT; i++) {
+    float pid_output = calculatePID(i, velocity_commands[i], joint_velocities[i], dt);
+    float motor_speed = constrain(pid_output / MAX_PID_OUTPUT, -1.0f, 1.0f);
+    setMotorSpeed(i, motor_speed);
+    
+    // Estimate effort from PID output
+    joint_efforts[i] = pid_output / MAX_PID_OUTPUT;
+  }
+}
+
+void updateJointStates(float dt) {
+  for (int i = 0; i < JOINT_COUNT; i++) {
+    long current_counts;
+    
+    // Atomic read of encoder counts
+    noInterrupts();
+    current_counts = encoder_counts[i];
+    interrupts();
+    
+    long count_diff = current_counts - encoder_prev[i];
+    encoder_prev[i] = current_counts;
+    
+    // Convert encoder counts to radians
+    double position_increment = (double)count_diff * 2.0 * PI / (ENCODER_PPR * GEAR_RATIO);
+    joint_positions[i] += position_increment;
+    
+    // Calculate velocity in rad/s
+    if (dt > 0) {
+      joint_velocities[i] = position_increment / dt;
+    }
+  }
+}
+
+float calculatePID(int joint_id, float setpoint, float process_value, float dt) {
+  if (dt <= 0) return 0.0f;
+  
+  float& error = pid_errors[joint_id];
+  float& prev_error = pid_prev_errors[joint_id];
+  float& error_sum = pid_error_sums[joint_id];
+  
+  error = setpoint - process_value;
   error_sum += error * dt;
-  if (KI != 0) { // Avoid division by zero
-      error_sum = constrain(error_sum, MIN_PID_OUTPUT / KI, MAX_PID_OUTPUT / KI);
-  } else {
-      error_sum = 0; // No integral action if KI is zero
-  }
-
-  // Derivative term
-  float error_delta = (error - prev_error) / dt;
-  prev_error = error; // Update previous error for next iteration
-
-  // PID output calculation
-  float output = (KP * error) + (KI * error_sum) + (KD * error_delta);
-
-  // Clamp output to valid PWM range
+  
+  // Anti-windup
+  error_sum = constrain(error_sum, -100.0f, 100.0f);
+  
+  float derivative = (error - prev_error) / dt;
+  prev_error = error;
+  
+  float output = (KP * error) + (KI * error_sum) + (KD * derivative);
   return constrain(output, MIN_PID_OUTPUT, MAX_PID_OUTPUT);
 }
 
-//*****************************************************************************
-// TIMER CALLBACKS (Control, Odometry, Diagnostics)
-//*****************************************************************************
-void controlCallback(rcl_timer_t* timer, int64_t last_call_time) {
-  if (timer == NULL) return;
+void setMotorSpeed(int motor_id, float speed_normalized) {
+  speed_normalized = constrain(speed_normalized, -1.0f, 1.0f);
+  
+  int pwm_value = (int)(fabs(speed_normalized) * PWM_MAX_DUTY);
+  bool forward = (speed_normalized >= 0.0f);
+  
+  int dir1_pin, dir2_pin, pwm_pin;
+  
+  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    // For new ESP32 core, pwm_pin is the actual pin number
+    switch (motor_id) {
+      case 0: dir1_pin = MOTOR_FL_DIR1_PIN; dir2_pin = MOTOR_FL_DIR2_PIN; pwm_pin = MOTOR_FL_EN_PIN; break;
+      case 1: dir1_pin = MOTOR_FR_DIR1_PIN; dir2_pin = MOTOR_FR_DIR2_PIN; pwm_pin = MOTOR_FR_EN_PIN; break;
+      case 2: dir1_pin = MOTOR_RL_DIR1_PIN; dir2_pin = MOTOR_RL_DIR2_PIN; pwm_pin = MOTOR_RL_EN_PIN; break;
+      case 3: dir1_pin = MOTOR_RR_DIR1_PIN; dir2_pin = MOTOR_RR_DIR2_PIN; pwm_pin = MOTOR_RR_EN_PIN; break;
+      default: return;
+    }
+  #else
+    // For old ESP32 core, pwm_pin is the channel number
+    switch (motor_id) {
+      case 0: dir1_pin = MOTOR_FL_DIR1_PIN; dir2_pin = MOTOR_FL_DIR2_PIN; pwm_pin = 0; break;
+      case 1: dir1_pin = MOTOR_FR_DIR1_PIN; dir2_pin = MOTOR_FR_DIR2_PIN; pwm_pin = 1; break;
+      case 2: dir1_pin = MOTOR_RL_DIR1_PIN; dir2_pin = MOTOR_RL_DIR2_PIN; pwm_pin = 2; break;
+      case 3: dir1_pin = MOTOR_RR_DIR1_PIN; dir2_pin = MOTOR_RR_DIR2_PIN; pwm_pin = 3; break;
+      default: return;
+    }
+  #endif
+  
+  // Set direction
+  digitalWrite(dir1_pin, forward ? HIGH : LOW);
+  digitalWrite(dir2_pin, forward ? LOW : HIGH);
+  
+  // Set PWM speed
+  ledcWrite(pwm_pin, pwm_value);
+}
 
-  unsigned long now = millis();
-  float dt_control = (now - last_control_time) / 1000.0f;
-  last_control_time = now;
-  // Basic protection against dt being zero or negative after rollover/timing issues
-  if (dt_control <= 0) dt_control = 1.0f / CONTROL_FREQUENCY_HZ;
+void stopAllMotors() {
+  for (int i = 0; i < JOINT_COUNT; i++) {
+    setMotorSpeed(i, 0.0f);
+    velocity_commands[i] = 0.0;
+    pid_error_sums[i] = 0.0; // Reset integral terms
+  }
+}
 
-  // --- Calculate Current Wheel Velocities ---
-  unsigned long vel_time_now = millis();
-  float dt_vel = (vel_time_now -
+//*****************************************************************************
+// ROS CALLBACKS AND PUBLISHERS
+//*****************************************************************************
+void twistCallback(const void* msgin) {
+  const geometry_msgs__msg__Twist* msg = (const geometry_msgs__msg__Twist*)msgin;
+  
+  float linear_x = msg->linear.x;
+  float angular_z = msg->angular.z;
+  
+  // Convert twist to wheel velocities (differential drive kinematics)
+  float left_vel = (linear_x - angular_z * WHEEL_BASE_WIDTH / 2.0) / WHEEL_RADIUS;
+  float right_vel = (linear_x + angular_z * WHEEL_BASE_WIDTH / 2.0) / WHEEL_RADIUS;
+  
+  // Assign to wheels
+  velocity_commands[0] = left_vel;   // Front left
+  velocity_commands[1] = right_vel;  // Front right
+  velocity_commands[2] = left_vel;   // Rear left
+  velocity_commands[3] = right_vel;  // Rear right
+  
+  last_cmd_time = millis();
+}
+
+void publishJointStates() {
+  if (!ros_connected) return;
+  
+  // Update timestamp
+  int64_t time_ns = rmw_uros_epoch_nanos();
+  joint_state_msg.header.stamp.sec = time_ns / 1000000000LL;
+  joint_state_msg.header.stamp.nanosec = time_ns % 1000000000LL;
+  
+  // Publish joint states
+  rcl_ret_t ret = rcl_publish(&joint_state_publisher, &joint_state_msg, NULL);
+  if (ret != RCL_RET_OK) {
+    Serial.println("Failed to publish joint states");
+  }
+}
+
+void publishDiagnostics() {
+  if (!ros_connected) return;
+  
+  snprintf(diagnostic_buffer, sizeof(diagnostic_buffer),
+    "Uptime: %lu s, Encoders: [%ld,%ld,%ld,%ld], Vel: [%.2f,%.2f,%.2f,%.2f]",
+    millis() / 1000,
+    encoder_counts[0], encoder_counts[1], encoder_counts[2], encoder_counts[3],
+    joint_velocities[0], joint_velocities[1], joint_velocities[2], joint_velocities[3]
+  );
+  
+  diagnostic_msg.data.size = strlen(diagnostic_buffer);
+  rcl_publish(&diagnostic_publisher, &diagnostic_msg, NULL);
+}
+
+//*****************************************************************************
+// UTILITY FUNCTIONS
+//*****************************************************************************
+void blinkLED(int times, int duration_ms) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(STATUS_LED_PIN, HIGH);
+    delay(duration_ms);
+    digitalWrite(STATUS_LED_PIN, LOW);
+    if (i < times - 1) delay(duration_ms);
+  }
+}
