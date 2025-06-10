@@ -1,0 +1,177 @@
+slam_toolbox:
+  ros__parameters:
+    # === CRITICAL: Real hardware settings ===
+    use_sim_time: false
+    
+    # === SLAM Mode for online mapping ===
+    mode: mapping
+    
+    # === Frame Configuration ===
+    base_frame: base_footprint
+    map_frame: map
+    odom_frame: odom
+    
+    # === Scan Topic ===
+    scan_topic: /scan
+    
+    # === Transform Settings ===
+    transform_publish_period: 0.02  # 50Hz
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.0
+    
+    # === Map Settings ===
+    map_update_interval: 1.5  # Faster updates with IMU
+    resolution: 0.03          # Higher resolution for better accuracy
+    map_publish_period: 1.0   # Publish map every second
+    
+    # === IMU-Enhanced Scan Processing ===
+    throttle_scans: 1         # Process every scan
+    minimum_travel_distance: 0.05   # Reduced for IMU assistance
+    minimum_travel_heading: 0.05    # Reduced for IMU assistance
+    minimum_time_interval: 0.1      # Faster updates
+    
+    # === Laser Range Settings ===
+    max_laser_range: 8.0      # RPLidar A1 max range
+    min_laser_range: 0.15     # RPLidar A1 min range
+    
+    # === Enhanced Scan Matching with IMU ===
+    use_scan_matching: true
+    use_scan_barycenter: true
+    scan_buffer_size: 15      # Increased buffer
+    scan_buffer_maximum_scan_distance: 8.0
+    link_match_minimum_response_fine: 0.05  # More sensitive
+    link_scan_maximum_distance: 1.0         # Reduced for accuracy
+    
+    # === Loop Closure (Enhanced with IMU) ===
+    do_loop_closing: true
+    loop_search_maximum_distance: 2.5
+    loop_match_minimum_chain_size: 5
+    loop_match_maximum_variance_coarse: 1.5  # Tighter constraints
+    loop_match_minimum_response_coarse: 0.4
+    loop_match_minimum_response_fine: 0.5
+    
+    # === Optimization (Faster with IMU assistance) ===
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    optimization_delta: 0.03  # Smaller for higher precision
+    
+    # === Interactive Mode ===
+    enable_interactive_mode: true
+    
+    # === Pose Extrapolation (Enhanced with IMU) ===
+    use_pose_extrapolator: true
+    
+    # === Correlation Parameters (Tighter with IMU) ===
+    correlation_search_space_dimension: 0.2  # Reduced search space
+    correlation_search_space_resolution: 0.005
+    correlation_search_space_smear_deviation: 0.02
+    
+    # === Loop Search Parameters ===
+    loop_search_space_dimension: 4.0  # Reduced with IMU confidence
+    loop_search_space_resolution: 0.03
+    loop_search_space_smear_deviation: 0.02
+    
+    # === Distance and Angle Penalties (Reduced with IMU) ===
+    distance_variance_penalty: 0.2
+    angle_variance_penalty: 0.4  # Lower penalty due to IMU
+    
+    # === Debug ===
+    debug_logging: false
+
+# Extended Kalman Filter for sensor fusion
+ekf_filter_node:
+  ros__parameters:
+    use_sim_time: false
+    
+    # EKF Configuration
+    frequency: 50.0  # High frequency for smooth fusion
+    sensor_timeout: 0.1
+    two_d_mode: true
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: true
+    debug: false
+    
+    # Frame Configuration
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: odom
+    
+    # Sensor Configuration
+    odom0: /odom  # ESP32 wheel+IMU fused odometry
+    odom0_config: [true,  true,  false,  # x, y, z
+                   false, false, true,   # roll, pitch, yaw
+                   true,  true,  false,  # vx, vy, vz
+                   false, false, true,   # vroll, vpitch, vyaw
+                   false, false, false]  # ax, ay, az
+    
+    imu0: /imu/data  # Raw IMU data from ESP32
+    imu0_config: [false, false, false,  # x, y, z
+                  false, false, true,   # roll, pitch, yaw
+                  false, false, false,  # vx, vy, vz
+                  false, false, true,   # vroll, vpitch, vyaw
+                  false, false, false]  # ax, ay, az
+    
+    # Covariance overrides for odometry
+    odom0_pose_covariance: [0.001, 0.0,   0.0,   0.0,   0.0,   0.0,
+                           0.0,   0.001, 0.0,   0.0,   0.0,   0.0,
+                           0.0,   0.0,   1e6,   0.0,   0.0,   0.0,
+                           0.0,   0.0,   0.0,   1e6,   0.0,   0.0,
+                           0.0,   0.0,   0.0,   0.0,   1e6,   0.0,
+                           0.0,   0.0,   0.0,   0.0,   0.0,   0.003]
+    
+    odom0_twist_covariance: [0.001, 0.0,   0.0,   0.0,   0.0,   0.0,
+                            0.0,   0.001, 0.0,   0.0,   0.0,   0.0,
+                            0.0,   0.0,   1e6,   0.0,   0.0,   0.0,
+                            0.0,   0.0,   0.0,   1e6,   0.0,   0.0,
+                            0.0,   0.0,   0.0,   0.0,   1e6,   0.0,
+                            0.0,   0.0,   0.0,   0.0,   0.0,   0.003]
+    
+    # Covariance overrides for IMU
+    imu0_pose_covariance: [1e6,   0.0,   0.0,   0.0,   0.0,   0.0,
+                          0.0,   1e6,   0.0,   0.0,   0.0,   0.0,
+                          0.0,   0.0,   1e6,   0.0,   0.0,   0.0,
+                          0.0,   0.0,   0.0,   1e6,   0.0,   0.0,
+                          0.0,   0.0,   0.0,   0.0,   1e6,   0.0,
+                          0.0,   0.0,   0.0,   0.0,   0.0,   0.002]
+    
+    imu0_angular_velocity_covariance: [1e6,   0.0,   0.0,
+                                      0.0,   1e6,   0.0,
+                                      0.0,   0.0,   0.002]
+    
+    # Process noise covariance
+    process_noise_covariance: [0.005, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.005, 0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.06,  0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.03,  0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.03,  0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.06,  0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.025,   0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.025,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.04,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.02,  0.0,   0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.015]
+    
+    # Initial state covariance
+    initial_estimate_covariance: [1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9]

@@ -1,0 +1,427 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="esp32_robot">
+  
+  <!-- XACRO Properties -->
+  <xacro:property name="use_fake_hardware" value="$(arg use_fake_hardware)" />
+  
+  <!-- Robot Physical Properties - MUST MATCH ESP32 FIRMWARE -->
+  <xacro:property name="wheel_radius" value="0.05" />      <!-- 5cm wheels -->
+  <xacro:property name="wheel_width" value="0.02" />       <!-- 2cm wheel width -->
+  <xacro:property name="wheel_separation" value="0.34" />  <!-- 34cm between wheels -->
+  <xacro:property name="wheelbase_length" value="0.30" />  <!-- 30cm wheelbase -->
+  
+  <!-- Chassis dimensions -->
+  <xacro:property name="chassis_length" value="0.35" />
+  <xacro:property name="chassis_width" value="0.25" />
+  <xacro:property name="chassis_height" value="0.10" />
+  <xacro:property name="chassis_mass" value="2.0" />
+  
+  <!-- Sensor mounting positions -->
+  <xacro:property name="lidar_x" value="0.0" />
+  <xacro:property name="lidar_y" value="0.0" />
+  <xacro:property name="lidar_z" value="0.15" />
+  
+  <xacro:property name="imu_x" value="0.0" />
+  <xacro:property name="imu_y" value="0.0" />
+  <xacro:property name="imu_z" value="0.05" />
+
+  <!-- Include common macros -->
+  <xacro:include filename="$(find my_slam_pkg)/urdf/materials.xacro" />
+  <xacro:include filename="$(find my_slam_pkg)/urdf/inertial_macros.xacro" />
+
+  <!-- BASE FOOTPRINT LINK -->
+  <!-- This is the projection of the robot center on the ground -->
+  <link name="base_footprint">
+    <visual>
+      <geometry>
+        <sphere radius="0.001"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+  </link>
+
+  <!-- BASE LINK -->
+  <!-- Main robot chassis -->
+  <joint name="base_footprint_to_base_link" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+      <material name="blue"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+    <xacro:inertial_box mass="${chassis_mass}" x="${chassis_length}" y="${chassis_width}" z="${chassis_height}">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <!-- WHEELS -->
+  <!-- Wheel macro for reusability -->
+  <xacro:macro name="wheel" params="prefix x y">
+    <link name="${prefix}_wheel_link">
+      <visual>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <material name="black"/>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      </collision>
+      <xacro:inertial_cylinder mass="0.2" length="${wheel_width}" radius="${wheel_radius}">
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      </xacro:inertial_cylinder>
+    </link>
+
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${prefix}_wheel_link"/>
+      <origin xyz="${x} ${y} ${-chassis_height/2}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- Create all four wheels -->
+  <xacro:wheel prefix="front_left" x="${wheelbase_length/2}" y="${wheel_separation/2}"/>
+  <xacro:wheel prefix="front_right" x="${wheelbase_length/2}" y="${-wheel_separation/2}"/>
+  <xacro:wheel prefix="rear_left" x="${-wheelbase_length/2}" y="${wheel_separation/2}"/>
+  <xacro:wheel prefix="rear_right" x="${-wheelbase_length/2}" y="${-wheel_separation/2}"/>
+
+  <!-- LIDAR SENSOR -->
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.04" length="0.07"/>
+      </geometry>
+      <material name="red"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.04" length="0.07"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+    <xacro:inertial_cylinder mass="0.1" length="0.07" radius="0.04">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_cylinder>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${lidar_z}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- IMU SENSOR -->
+  <link name="imu_link">
+    <visual>
+      <geometry>
+        <box size="0.02 0.02 0.01"/>
+      </geometry>
+      <material name="green"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.02 0.02 0.01"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+    <xacro:inertial_box mass="0.01" x="0.02" y="0.02" z="0.01">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </xacro:inertial_box>
+  </link>
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="${imu_x} ${imu_y} ${imu_z}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ROS2_CONTROL HARDWARE INTERFACE -->
+  <ros2_control name="esp32_robot_system" type="system">
+    
+    <!-- Hardware Interface Plugin -->
+    <hardware>
+      <xacro:if value="${use_fake_hardware}">
+        <!-- Fake hardware for testing -->
+        <plugin>fake_components/GenericSystem</plugin>
+        <param name="fake_sensor_commands">false</param>
+        <param name="state_following_offset">0.0</param>
+      </xacro:if>
+      <xacro:unless value="${use_fake_hardware}">
+        <!-- Real ESP32 hardware interface -->
+        <plugin>my_slam_pkg/ESP32HardwareInterface</plugin>
+        <param name="esp32_port">/dev/ttyUSB0</param>
+        <param name="esp32_baudrate">115200</param>
+        <param name="wheel_radius">${wheel_radius}</param>
+        <param name="wheel_separation">${wheel_separation}</param>
+        <param name="encoder_resolution">11</param>
+        <param name="gear_ratio">1.0</param>
+        <param name="publish_rate">100.0</param>
+        <param name="timeout_ms">200</param>
+      </xacro:unless>
+    </hardware>
+
+    <!-- WHEEL JOINTS FOR DIFFERENTIAL DRIVE -->
+    <joint name="front_left_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="front_right_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="rear_left_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="rear_right_wheel_joint">
+      <command_interface name="velocity">
+        <param name="min">-10</param>
+        <param name="max">10</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <!-- IMU SENSOR FOR EKF -->
+    <sensor name="esp32_imu">
+      <state_interface name="orientation.x"/>
+      <state_interface name="orientation.y"/>
+      <state_interface name="orientation.z"/>
+      <state_interface name="orientation.w"/>
+      <state_interface name="angular_velocity.x"/>
+      <state_interface name="angular_velocity.y"/>
+      <state_interface name="angular_velocity.z"/>
+      <state_interface name="linear_acceleration.x"/>
+      <state_interface name="linear_acceleration.y"/>
+      <state_interface name="linear_acceleration.z"/>
+    </sensor>
+
+  </ros2_control>
+
+  <!-- GAZEBO PLUGINS (for simulation) -->
+  <xacro:if value="${use_fake_hardware}">
+    
+    <!-- Gazebo ros2_control plugin -->
+    <gazebo>
+      <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+        <parameters>$(find my_slam_pkg)/config/esp32_ros2_control_ekf.yaml</parameters>
+      </plugin>
+    </gazebo>
+
+    <!-- Gazebo differential drive plugin (backup) -->
+    <gazebo>
+      <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
+        <update_rate>50</update_rate>
+        <left_joint>front_left_wheel_joint</left_joint>
+        <right_joint>front_right_wheel_joint</right_joint>
+        <wheel_separation>${wheel_separation}</wheel_separation>
+        <wheel_diameter>${2*wheel_radius}</wheel_diameter>
+        <max_wheel_torque>20</max_wheel_torque>
+        <max_wheel_acceleration>1.0</max_wheel_acceleration>
+        <command_topic>cmd_vel</command_topic>
+        <publish_odom>true</publish_odom>
+        <publish_odom_tf>false</publish_odom_tf>  <!-- EKF handles this -->
+        <publish_wheel_tf>true</publish_wheel_tf>
+        <odometry_topic>odom</odometry_topic>
+        <odometry_frame>odom</odometry_frame>
+        <robot_base_frame>base_footprint</robot_base_frame>
+      </plugin>
+    </gazebo>
+
+    <!-- Gazebo IMU plugin -->
+    <gazebo reference="imu_link">
+      <sensor name="esp32_imu_sensor" type="imu">
+        <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+          <ros>
+            <namespace></namespace>
+            <remapping>~/out:=imu/data</remapping>
+          </ros>
+          <initial_orientation_as_reference>false</initial_orientation_as_reference>
+        </plugin>
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <visualize>true</visualize>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+                <bias_mean>0.0000075</bias_mean>
+                <bias_stddev>0.0000008</bias_stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+                <bias_mean>0.0000075</bias_mean>
+                <bias_stddev>0.0000008</bias_stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+                <bias_mean>0.0000075</bias_mean>
+                <bias_stddev>0.0000008</bias_stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+                <bias_mean>0.1</bias_mean>
+                <bias_stddev>0.001</bias_stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+                <bias_mean>0.1</bias_mean>
+                <bias_stddev>0.001</bias_stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+                <bias_mean>0.1</bias_mean>
+                <bias_stddev>0.001</bias_stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </gazebo>
+
+    <!-- Gazebo LiDAR plugin -->
+    <gazebo reference="lidar_link">
+      <sensor name="lidar" type="ray">
+        <plugin name="scan" filename="libgazebo_ros_ray_sensor.so">
+          <ros>
+            <remapping>~/out:=scan</remapping>
+          </ros>
+          <output_type>sensor_msgs/LaserScan</output_type>
+          <frame_name>lidar_link</frame_name>
+        </plugin>
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <visualize>true</visualize>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1.0</resolution>
+              <min_angle>0.0</min_angle>
+              <max_angle>6.28</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.15</min>
+            <max>8.0</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </ray>
+      </sensor>
+    </gazebo>
+
+  </xacro:if>
+
+  <!-- GAZEBO MATERIAL PROPERTIES -->
+  <gazebo reference="base_link">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+
+  <gazebo reference="front_left_wheel_link">
+    <material>Gazebo/Black</material>
+    <mu1>0.8</mu1>
+    <mu2>0.8</mu2>
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
+    <minDepth>0.001</minDepth>
+    <maxVel>1.0</maxVel>
+  </gazebo>
+
+  <gazebo reference="front_right_wheel_link">
+    <material>Gazebo/Black</material>
+    <mu1>0.8</mu1>
+    <mu2>0.8</mu2>
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
+    <minDepth>0.001</minDepth>
+    <maxVel>1.0</maxVel>
+  </gazebo>
+
+  <gazebo reference="rear_left_wheel_link">
+    <material>Gazebo/Black</material>
+    <mu1>0.8</mu1>
+    <mu2>0.8</mu2>
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
+    <minDepth>0.001</minDepth>
+    <maxVel>1.0</maxVel>
+  </gazebo>
+
+  <gazebo reference="rear_right_wheel_link">
+    <material>Gazebo/Black</material>
+    <mu1>0.8</mu1>
+    <mu2>0.8</mu2>
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
+    <minDepth>0.001</minDepth>
+    <maxVel>1.0</maxVel>
+  </gazebo>
+
+  <gazebo reference="lidar_link">
+    <material>Gazebo/Red</material>
+  </gazebo>
+
+  <gazebo reference="imu_link">
+    <material>Gazebo/Green</material>
+  </gazebo>
+
+</robot>

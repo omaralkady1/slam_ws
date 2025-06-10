@@ -3,7 +3,7 @@
 <package format="3">
   <name>my_slam_pkg</name>
   <version>0.0.1</version>
-  <description>A package for SLAM implementation with ROS2 control for a four-wheeled robot with IMU integration</description>
+  <description>A package for SLAM implementation with ROS2 control, EKF sensor fusion, and four-wheeled robot with IMU integration</description>
   <maintainer email="your_email@example.com">Your Name</maintainer>
   <license>Apache License 2.0</license>
 
@@ -24,11 +24,20 @@
   <!-- SLAM Dependencies -->
   <depend>slam_toolbox</depend>
   
+  <!-- EKF and Sensor Fusion Dependencies -->
+  <depend>robot_localization</depend>  <!-- NEW: EKF filter package -->
+  
   <!-- Navigation Dependencies -->
   <depend>nav2_bringup</depend>
   <depend>nav2_map_server</depend>
   <depend>nav2_msgs</depend>
   <depend>nav2_common</depend>
+  <depend>nav2_amcl</depend>           <!-- NEW: AMCL for localization -->
+  <depend>nav2_controller</depend>     <!-- NEW: Navigation controller -->
+  <depend>nav2_planner</depend>        <!-- NEW: Path planner -->
+  <depend>nav2_behaviors</depend>      <!-- NEW: Navigation behaviors -->
+  <depend>nav2_bt_navigator</depend>   <!-- NEW: Behavior tree navigator -->
+  <depend>nav2_lifecycle_manager</depend> <!-- NEW: Lifecycle management -->
   
   <!-- Controller Dependencies -->
   <depend>controller_manager</depend>
@@ -43,10 +52,17 @@
   <depend>pluginlib</depend>
   <depend>rclcpp_lifecycle</depend>
   
+  <!-- micro-ROS Dependencies -->
+  <depend>micro_ros_agent</depend>     <!-- NEW: micro-ROS agent for ESP32 -->
+  
+  <!-- LiDAR Dependencies -->
+  <depend>rplidar_ros</depend>         <!-- NEW: RPLidar driver -->
+  
   <!-- Python Dependencies -->
   <depend>python3-tf-transformations</depend>
   <depend>python3-numpy</depend>
-  <depend>python3-scipy</depend>  <!-- NEW: For IMU processing -->
+  <depend>python3-scipy</depend>      <!-- For IMU processing -->
+  <depend>python3-matplotlib</depend> <!-- For diagnostics plotting -->
   
   <!-- Gazebo Dependencies -->
   <depend>gazebo_ros</depend>

@@ -1,0 +1,119 @@
+# ESP32 Robot EKF Configuration for Sensor Fusion
+# Fuses wheel odometry from ros2_control with IMU data
+
+# === EKF FILTER NODE CONFIGURATION ===
+ekf_filter_node:
+  ros__parameters:
+    use_sim_time: false
+    
+    # EKF Configuration
+    frequency: 100.0         # High frequency for smooth fusion
+    sensor_timeout: 0.1      # Sensor timeout in seconds
+    two_d_mode: true         # 2D mode for differential drive robot
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: true
+    debug: false
+    debug_out_file: /tmp/ekf_debug.txt
+    
+    # Frame Configuration
+    map_frame: map           # SLAM provides map frame
+    odom_frame: odom         # EKF publishes odom frame
+    base_link_frame: base_footprint  # Robot base frame
+    world_frame: odom        # World frame for local navigation
+    
+    # === PRIMARY ODOMETRY SOURCE (ros2_control) ===
+    # This comes from the diff_drive_controller with wheel encoder data
+    odom0: /diff_drive_controller/odom
+    odom0_config: [true,  true,  false,  # x, y, z position
+                   false, false, true,   # roll, pitch, yaw orientation  
+                   true,  true,  false,  # vx, vy, vz velocity
+                   false, false, true,   # vroll, vpitch, vyaw angular velocity
+                   false, false, false]  # ax, ay, az acceleration
+    
+    # Wheel odometry is accurate for position and linear velocity
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 10
+    
+    # === IMU SENSOR FUSION ===
+    # ESP32 IMU data for orientation and angular velocity
+    imu0: /imu/data
+    imu0_config: [false, false, false,  # x, y, z position (not used)
+                  false, false, true,   # roll, pitch, yaw (only yaw for 2D)
+                  false, false, false,  # vx, vy, vz (not used)
+                  false, false, true,   # vroll, vpitch, vyaw (only vyaw)
+                  false, false, false]  # ax, ay, az (not used for stability)
+    
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
+    
+    # === COVARIANCE MATRICES ===
+    # Wheel odometry covariance (trust position and linear velocity)
+    odom0_pose_covariance: [0.001, 0.0,   0.0,   0.0,   0.0,   0.0,     # x - trust wheel odometry
+                           0.0,   0.001, 0.0,   0.0,   0.0,   0.0,     # y - trust wheel odometry  
+                           0.0,   0.0,   1e6,   0.0,   0.0,   0.0,     # z - ignore
+                           0.0,   0.0,   0.0,   1e6,   0.0,   0.0,     # roll - ignore
+                           0.0,   0.0,   0.0,   0.0,   1e6,   0.0,     # pitch - ignore
+                           0.0,   0.0,   0.0,   0.0,   0.0,   0.01]    # yaw - moderate trust
+    
+    odom0_twist_covariance: [0.001, 0.0,   0.0,   0.0,   0.0,   0.0,     # vx - trust wheel odometry
+                            0.0,   0.001, 0.0,   0.0,   0.0,   0.0,     # vy - trust wheel odometry
+                            0.0,   0.0,   1e6,   0.0,   0.0,   0.0,     # vz - ignore
+                            0.0,   0.0,   0.0,   1e6,   0.0,   0.0,     # vroll - ignore
+                            0.0,   0.0,   0.0,   0.0,   1e6,   0.0,     # vpitch - ignore
+                            0.0,   0.0,   0.0,   0.0,   0.0,   0.01]    # vyaw - moderate trust
+    
+    # IMU covariance (trust orientation and angular velocity)
+    imu0_pose_covariance: [1e6,   0.0,   0.0,   0.0,   0.0,   0.0,     # x - ignore
+                          0.0,   1e6,   0.0,   0.0,   0.0,   0.0,     # y - ignore
+                          0.0,   0.0,   1e6,   0.0,   0.0,   0.0,     # z - ignore
+                          0.0,   0.0,   0.0,   1e6,   0.0,   0.0,     # roll - ignore
+                          0.0,   0.0,   0.0,   0.0,   1e6,   0.0,     # pitch - ignore
+                          0.0,   0.0,   0.0,   0.0,   0.0,   0.001]   # yaw - trust IMU
+    
+    imu0_angular_velocity_covariance: [1e6,   0.0,   0.0,              # vroll - ignore
+                                      0.0,   1e6,   0.0,              # vpitch - ignore  
+                                      0.0,   0.0,   0.001]            # vyaw - trust IMU
+    
+    imu0_linear_acceleration_covariance: [1e6,   0.0,   0.0,           # ax - ignore
+                                         0.0,   1e6,   0.0,           # ay - ignore
+                                         0.0,   0.0,   1e6]           # az - ignore
+    
+    # === PROCESS NOISE COVARIANCE ===
+    # How much we expect the robot's state to change between updates
+    process_noise_covariance: [0.005, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # x
+                              0.0,   0.005, 0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # y
+                              0.0,   0.0,   0.06,  0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # z
+                              0.0,   0.0,   0.0,   0.03,  0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # roll
+                              0.0,   0.0,   0.0,   0.0,   0.03,  0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # pitch
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.06,  0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # yaw
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.025,   0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # vx
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.025,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # vy
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.04,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,    # vz
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,    # vroll
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,    # vpitch
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.02,  0.0,   0.0,   0.0,    # vyaw
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,    # ax
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,    # ay
+                              0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,     0.0,     0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.015]  # az
+    
+    # === INITIAL STATE COVARIANCE ===
+    # Uncertainty about the robot's initial state
+    initial_estimate_covariance: [1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,
+                                 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9]

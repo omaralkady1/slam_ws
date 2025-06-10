@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""
+EKF Integration Test Script
+Tests the sensor fusion between wheel odometry and IMU data
+"""
+
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu
+import math
+import time
+
+
+class EKFTester(Node):
+    def __init__(self):
+        super().__init__('ekf_tester')
+        
+        # QoS profile
+        qos_profile = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+        
+        # Publishers
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        
+        # Subscribers
+        self.wheel_odom_sub = self.create_subscription(
+            Odometry,
+            '/diff_drive_controller/odom',
+            self.wheel_odom_callback,
+            qos_profile
+        )
+        
+        self.ekf_odom_sub = self.create_subscription(
+            Odometry,
+            '/odometry/filtered',
+            self.ekf_odom_callback,
+            qos_profile
+        )
+        
+        self.imu_sub = self.create_subscription(
+            Imu,
+            '/imu/data',
+            self.imu_callback,
+            qos_profile
+        )
+        
+        # Data storage
+        self.wheel_odom = None
+        self.ekf_odom = None
+        self.imu_data = None
+        
+        # Test parameters
+        self.test_active = False
+        self.test_start_time = None
+        self.test_duration = 10.0  # seconds
+        
+        # Timer for test execution
+        self.test_timer = self.create_timer(0.1, self.run_test)
+        
+        self.get_logger().info("EKF Integration Tester started")
+        self.get_logger().info("Starting movement test in 3 seconds...")
+        
+        # Start test after delay
+        self.start_test_timer = self.create_timer(3.0, self.start_test)
+        self.start_test_timer.cancel()  # Will be restarted
+        
+    def wheel_odom_callback(self, msg):
+        """Store wheel odometry data"""
+        self.wheel_odom = msg
+        
+    def ekf_odom_callback(self, msg):
+        """Store EKF filtered odometry data"""
+        self.ekf_odom = msg
+        
+    def imu_callback(self, msg):
+        """Store IMU data"""
+        self.imu_data = msg
+        
+    def start_test(self):
+        """Start the EKF test sequence"""
+        self.test_active = True
+        self.test_start_time = time.time()
+        self.get_logger().info("Starting EKF integration test...")
+        self.get_logger().info("Phase 1: Forward motion test")
+        
+    def run_test(self):
+        """Execute test sequence"""
+        if not self.test_active:
+            return
+            
+        current_time = time.time()
+        elapsed_time = current_time - self.test_start_time
+        
+        # Create command message
+        cmd = Twist()
+        
+        # Test sequence phases
+        if elapsed_time < 3.0:
+            # Phase 1: Forward motion
+            cmd.linear.x = 0.2
+            cmd.angular.z = 0.0
+            phase = "Forward motion"
+            
+        elif elapsed_time < 6.0:
+            # Phase 2: Rotation
+            cmd.linear.x = 0.0
+            cmd.angular.z = 0.5
+            phase = "Rotation"
+            
+        elif elapsed_time < 9.0:
+            # Phase 3: Combined motion
+            cmd.linear.x = 0.15
+            cmd.angular.z = 0.3
+            phase = "Combined motion"
+            
+        elif elapsed_time < 10.0:
+            # Phase 4: Stop
+            cmd.linear.x = 0.0
+            cmd.angular.z = 0.0
+            phase = "Stop"
+            
+        else:
+            # Test complete
+            cmd.linear.x = 0.0
+            cmd.angular.z = 0.0
+            self.test_active = False
+            self.get_logger().info("EKF integration test completed!")
+            self.print_final_report()
+            return
+        
+        # Publish command
+        self.cmd_vel_pub.publish(cmd)
+        
+        # Print status every second
+        if int(elapsed_time) != int(elapsed_time - 0.1):
+            self.print_status(phase, elapsed_time)
+    
+    def print_status(self, phase, elapsed_time):
+        """Print current test status"""
+        status_lines = [
+            f"\n=== EKF Test Status (t={elapsed_time:.1f}s) ===",
+            f"Phase: {phase}",
+            ""
+        ]
+        
+        # Wheel odometry status
+        if self.wheel_odom:
+            pos = self.wheel_odom.pose.pose.position
+            vel = self.wheel_odom.twist.twist.linear
+            status_lines.extend([
+                f"Wheel Odometry:",
+                f"  Position: ({pos.x:.3f}, {pos.y:.3f})",
+                f"  Velocity: ({vel.x:.3f}, {vel.y:.3f})",
+                ""
+            ])
+        else:
+            status_lines.append("Wheel Odometry: NO DATA")
+        
+        # EKF odometry status
+        if self.ekf_odom:
+            pos = self.ekf_odom.pose.pose.position
+            vel = self.ekf_odom.twist.twist.linear
+            status_lines.extend([
+                f"EKF Odometry:",
+                f"  Position: ({pos.x:.3f}, {pos.y:.3f})",
+                f"  Velocity: ({vel.x:.3f}, {vel.y:.3f})",
+                ""
+            ])
+        else:
+            status_lines.append("EKF Odometry: NO DATA")
+        
+        # IMU status
+        if self.imu_data:
+            ang_vel = self.imu_data.angular_velocity
+            lin_acc = self.imu_data.linear_acceleration
+            status_lines.extend([
+                f"IMU Data:",
+                f"  Angular Velocity: ({ang_vel.x:.3f}, {ang_vel.y:.3f}, {ang_vel.z:.3f})",
+                f"  Linear Acceleration: ({lin_acc.x:.3f}, {lin_acc.y:.3f}, {lin_acc.z:.3f})",
+                ""
+            ])
+        else:
+            status_lines.append("IMU Data: NO DATA")
+        
+        # Position difference
+        if self.wheel_odom and self.ekf_odom:
+            wheel_pos = self.wheel_odom.pose.pose.position
+            ekf_pos = self.ekf_odom.pose.pose.position
+            
+            pos_diff = math.sqrt(
+                (wheel_pos.x - ekf_pos.x)**2 + 
+                (wheel_pos.y - ekf_pos.y)**2
+            )
+            
+            status_lines.append(f"Position Difference: {pos_diff:.4f}m")
+        
+        # Print all status lines
+        for line in status_lines:
+            self.get_logger().info(line)
+    
+    def quaternion_to_yaw(self, quat):
+        """Convert quaternion to yaw angle"""
+        siny_cosp = 2 * (quat.w * quat.z + quat.x * quat.y)
+        cosy_cosp = 1 - 2 * (quat.y * quat.y + quat.z * quat.z)
+        return math.atan2(siny_cosp, cosy_cosp)
+    
+    def print_final_report(self):
+        """Print final test report"""
+        self.get_logger().info("\n" + "="*50)
+        self.get_logger().info("EKF INTEGRATION TEST REPORT")
+        self.get_logger().info("="*50)
+        
+        if self.wheel_odom and self.ekf_odom and self.imu_data:
+            # Final positions
+            wheel_pos = self.wheel_odom.pose.pose.position
+            ekf_pos = self.ekf_odom.pose.pose.position
+            
+            wheel_yaw = self.quaternion_to_yaw(self.wheel_odom.pose.pose.orientation)
+            ekf_yaw = self.quaternion_to_yaw(self.ekf_odom.pose.pose.orientation)
+            
+            pos_diff = math.sqrt(
+                (wheel_pos.x - ekf_pos.x)**2 + 
+                (wheel_pos.y - ekf_pos.y)**2
+            )
+            
+            yaw_diff = abs(wheel_yaw - ekf_yaw)
+            
+            self.get_logger().info(f"Final Wheel Position: ({wheel_pos.x:.3f}, {wheel_pos.y:.3f}, {wheel_yaw:.3f})")
+            self.get_logger().info(f"Final EKF Position:   ({ekf_pos.x:.3f}, {ekf_pos.y:.3f}, {ekf_yaw:.3f})")
+            self.get_logger().info(f"Position Difference:  {pos_diff:.4f}m")
+            self.get_logger().info(f"Orientation Diff:     {yaw_diff:.4f}rad")
+            
+            # Assessment
+            if pos_diff < 0.05 and yaw_diff < 0.1:
+                assessment = "EXCELLENT - EKF fusion working very well"
+            elif pos_diff < 0.1 and yaw_diff < 0.2:
+                assessment = "GOOD - EKF fusion working well"
+            elif pos_diff < 0.2 and yaw_diff < 0.3:
+                assessment = "FAIR - EKF fusion needs tuning"
+            else:
+                assessment = "POOR - Check EKF configuration"
+            
+            self.get_logger().info(f"Assessment: {assessment}")
+            
+            # Recommendations
+            self.get_logger().info("\nRecommendations:")
+            if pos_diff > 0.1:
+                self.get_logger().info("- Check wheel odometry calibration")
+                self.get_logger().info("- Verify wheel radius and separation parameters")
+                self.get_logger().info("- Check EKF process noise covariance")
+            
+            if yaw_diff > 0.2:
+                self.get_logger().info("- Check IMU calibration")
+                self.get_logger().info("- Verify IMU mounting orientation")
+                self.get_logger().info("- Check EKF IMU covariance settings")
+            
+            if pos_diff < 0.05 and yaw_diff < 0.1:
+                self.get_logger().info("- EKF is working excellently!")
+                self.get_logger().info("- Ready for SLAM and navigation")
+        
+        else:
+            self.get_logger().error("FAILED - Missing sensor data!")
+            self.get_logger().error("Check that all sensors are publishing:")
+            if not self.wheel_odom:
+                self.get_logger().error("- Wheel odometry not received")
+            if not self.ekf_odom:
+                self.get_logger().error("- EKF odometry not received")
+            if not self.imu_data:
+                self.get_logger().error("- IMU data not received")
+        
+        self.get_logger().info("="*50)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    
+    ekf_tester = EKFTester()
+    
+    try:
+        rclpy.spin(ekf_tester)
+    except KeyboardInterrupt:
+        ekf_tester.get_logger().info("Test interrupted by user")
+    finally:
+        # Stop the robot
+        stop_cmd = Twist()
+        ekf_tester.cmd_vel_pub.publish(stop_cmd)
+        
+        ekf_tester.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

@@ -43,7 +43,6 @@ install(PROGRAMS
   scripts/ensure_nav_active.py
   scripts/test_motor_control.py
   scripts/manual_motor_test.py
-  scripts/calibrate_motors.py
   scripts/mock_esp32.py
   scripts/rplidar_diagnostics.py
   scripts/setup_rplidar.py
@@ -51,9 +50,18 @@ install(PROGRAMS
   scripts/test_rplidar.py
   scripts/tf_monitor.py
   scripts/simple_motor_test.py
-  scripts/esp32_diagnostics.py
+  scripts/esp32_diagnostics.py  # NEW: ESP32 diagnostics
+  scripts/esp32_hardware_controller.py  # NEW: ESP32 hardware controller with IMU
   scripts/slam_diagnostic.py
+  scripts/slam_diagnostics.py
+  scripts/slam_odometry_calibrator.py
   scripts/imu_enhanced_odometry_node.py  # NEW: IMU-enhanced odometry
+  scripts/imu_diagnostics.py
+  scripts/ekf_diagnostics.py
+  scripts/ekf_test_script.py
+  scripts/test_encoders.py
+  scripts/velocity_monitor.py
+  scripts/flash_esp32_firmware.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
