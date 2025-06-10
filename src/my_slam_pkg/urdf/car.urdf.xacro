@@ -181,10 +181,15 @@
 
  <!-- ROS2 Control Configuration -->
 <xacro:if value="$(arg use_fake_hardware)">
-  <!-- Gazebo simulated control -->
+  <!-- ESP32 simulated control -->
   <ros2_control name="car_control" type="system">
     <hardware>
-      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+      <plugin>my_slam_pkg/ESP32HardwareInterface</plugin>
+      <param name="use_sim_hardware">true</param>
+      <param name="wheel_radius">0.05</param>
+      <param name="wheel_separation">0.34</param>
+      <param name="cmd_vel_topic">/cmd_vel</param>
+      <param name="joint_states_topic">/joint_states</param>
     </hardware>
     
     <!-- Front Left Wheel -->
@@ -231,9 +236,10 @@
 
 <xacro:unless value="$(arg use_fake_hardware)">
   <!-- ESP32 hardware control -->
-  <ros2_control name="esp32_motor_controller" type="system">
+  <ros2_control name="car_control" type="system">
     <hardware>
       <plugin>my_slam_pkg/ESP32HardwareInterface</plugin>
+      <param name="use_sim_hardware">false</param>
       <param name="wheel_radius">0.05</param>
       <param name="wheel_separation">0.34</param>
       <param name="cmd_vel_topic">/cmd_vel</param>

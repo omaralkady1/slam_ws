@@ -1,69 +1,149 @@
 controller_manager:
   ros__parameters:
-    update_rate: 50  # Higher update rate for smoother control
-    use_sim_time: true
+    update_rate: 50  # Hz - matching ESP32 control loop
+    use_sim_time: false
 
+    # Controllers to be loaded
     diff_drive_controller:
       type: diff_drive_controller/DiffDriveController
     
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+# ESP32 Hardware Interface Configuration with PID Control
+esp32_motor_controller:
+  ros__parameters:
+    # Hardware interface plugin
+    plugin: my_slam_pkg/ESP32HardwareInterface
+    
+    # Robot physical parameters - MUST MATCH ESP32 FIRMWARE
+    wheel_radius: 0.05      # meters - matching ESP32 firmware
+    wheel_separation: 0.34  # meters - matching ESP32 firmware
+    
+    # Communication configuration
+    cmd_vel_topic: /cmd_vel_stamped  # For ros2_control compatibility
+    joint_states_topic: /joint_states # From ESP32 with PID control
+    odom_topic: /odom                 # Odometry from ESP32
+    use_stamped_vel: true             # Use stamped messages for better timing
+    
+    # Joint configuration - MUST match URDF exactly
+    joints:
+      - front_left_wheel_joint
+      - front_right_wheel_joint
+      - rear_left_wheel_joint
+      - rear_right_wheel_joint
+    
+    # Hardware simulation flag
+    use_sim_hardware: false
+
+# Differential Drive Controller Configuration for SLAM
 diff_drive_controller:
   ros__parameters:
-    # Configure the controller to use all four wheels
+    # Wheel joint assignments
     left_wheel_names: ["front_left_wheel_joint", "rear_left_wheel_joint"]
     right_wheel_names: ["front_right_wheel_joint", "rear_right_wheel_joint"]
     
-    # CRITICAL: Define wheel dimensions with precise values from URDF
-    wheel_separation: 0.34  # Distance between left and right wheels (from URDF)
-    wheel_radius: 0.05      # Wheel radius from URDF
+    # Physical parameters - MUST MATCH ESP32 FIRMWARE
+    wheel_separation: 0.34  # meters
+    wheel_radius: 0.05      # meters
     
-    # ROTATION FIX: Adjust these multipliers to fine-tune rotation behavior
-    wheel_separation_multiplier: 1.05  # Slightly increased to improve rotation accuracy
-    left_wheel_radius_multiplier: 0.95  # Reduce left wheel effective radius
-    right_wheel_radius_multiplier: 0.95 # Reduce right wheel effective radius
+    # Wheel parameter multipliers for fine-tuning
+    # Adjust these based on actual robot behavior:
+    # - If robot doesn't move far enough: increase radius multipliers
+    # - If robot turns too much/little: adjust separation multiplier
+    wheel_separation_multiplier: 1.0
+    left_wheel_radius_multiplier: 1.0
+    right_wheel_radius_multiplier: 1.0
     
-    # Higher publishing rate for smoother visualization
-    publish_rate: 50.0
+    # Publishing configuration for SLAM
+    publish_rate: 50.0  # Hz - matching control loop
     
-    # Important: These frames must match navigation stack
+    # Frame IDs for SLAM
     odom_frame_id: "odom"
     base_frame_id: "base_footprint"
     
-    # Critical setting: MUST be true for visualization
-    enable_odom_tf: true
+    # TF publishing - Let ESP32 handle this since it has the encoder data
+    enable_odom_tf: false  # ESP32 publishes odom->base_footprint transform
     
-    # Topic configuration - used by twist_mux
+    # Command velocity configuration
     cmd_vel_topic: "cmd_vel"
     use_stamped_vel: false
     
-    # Velocity limits - match with Nav2 configuration
+    # Velocity and acceleration limits for smooth SLAM operation
     linear:
       x:
         has_velocity_limits: true
-        max_velocity: 0.5
-        min_velocity: -0.5
+        max_velocity: 0.6        # m/s - conservative for SLAM
+        min_velocity: -0.6       # m/s
         has_acceleration_limits: true
-        max_acceleration: 1.0
-        min_acceleration: -1.0
+        max_acceleration: 0.8    # m/s^2 - smooth acceleration
+        min_acceleration: -0.8   # m/s^2
+        has_jerk_limits: false
+        
     angular:
       z:
         has_velocity_limits: true
-        max_velocity: 1.0
-        min_velocity: -1.0
+        max_velocity: 1.0        # rad/s - reduced for SLAM accuracy
+        min_velocity: -1.0       # rad/s
         has_acceleration_limits: true
-        max_acceleration: 1.0
-        min_acceleration: -1.0
-        
-    # Pose covariance diagonal values for odom (adjust to reduce drift)
-    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+        max_acceleration: 1.0    # rad/s^2
+        min_acceleration: -1.0   # rad/s^2
+        has_jerk_limits: false
     
-    # Twist covariance diagonal values for odom (adjust to reduce drift)
-    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    # Odometry configuration for SLAM
+    # Since ESP32 publishes odometry, we don't need to compute it here
+    publish_odom: false  # ESP32 handles odometry publishing
+    publish_odom_tf: false  # ESP32 handles TF publishing
     
-    # Enable open loop control for more predictable rotation
+    # Use closed-loop control (encoder feedback)
     open_loop: false
     
-    # Improved wheel slip modeling
-    wheel_slippage_factor: 0.05
+    # Command timeout for safety
+    cmd_vel_timeout: 0.5  # seconds - matching ESP32 timeout
+    
+    # Preserve turning radius during speed limiting
+    preserve_turning_radius: true
+    
+    # Publishing configuration
+    publish_limited_velocity: true
+    
+    # Velocity feedback type
+    velocity_rolling_window_size: 10
+    
+    # Dynamic reconfigure
+    enable_parameter_update: true
+
+# Joint State Broadcaster Configuration
+joint_state_broadcaster:
+  ros__parameters:
+    # Joints to broadcast
+    joints:
+      - front_left_wheel_joint
+      - front_right_wheel_joint
+      - rear_left_wheel_joint
+      - rear_right_wheel_joint
+    
+    # Publishing rate
+    publish_rate: 50.0  # Hz
+    
+    # Interface types to publish
+    interfaces:
+      - position
+      - velocity
+      - effort
+
+# Optional: PID gains configuration for ESP32
+# These values can be adjusted via serial commands on ESP32
+esp32_pid_config:
+  ros__parameters:
+    # PID gains for wheel velocity control
+    # These are just reference values - actual tuning happens on ESP32
+    pid_kp: 150.0  # Proportional gain
+    pid_ki: 50.0   # Integral gain
+    pid_kd: 10.0   # Derivative gain
+    
+    # Control loop frequency
+    control_frequency: 50  # Hz
+    
+    # Odometry publishing frequency
+    odom_frequency: 50  # Hz

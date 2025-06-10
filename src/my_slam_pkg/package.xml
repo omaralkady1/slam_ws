@@ -3,7 +3,7 @@
 <package format="3">
   <name>my_slam_pkg</name>
   <version>0.0.1</version>
-  <description>A package for SLAM implementation with ROS2 control for a four-wheeled robot</description>
+  <description>A package for SLAM implementation with ROS2 control for a four-wheeled robot with IMU integration</description>
   <maintainer email="your_email@example.com">Your Name</maintainer>
   <license>Apache License 2.0</license>
 
@@ -38,9 +38,15 @@
   <depend>twist_mux</depend>
   <depend>gazebo_ros2_control</depend>
   
+  <!-- Hardware Interface Dependencies -->
+  <depend>hardware_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp_lifecycle</depend>
+  
   <!-- Python Dependencies -->
   <depend>python3-tf-transformations</depend>
   <depend>python3-numpy</depend>
+  <depend>python3-scipy</depend>  <!-- NEW: For IMU processing -->
   
   <!-- Gazebo Dependencies -->
   <depend>gazebo_ros</depend>

@@ -13,7 +13,6 @@ controller_manager:
 esp32_motor_controller:
   ros__parameters:
     # Hardware interface plugin
-    plugin: my_slam_pkg/ESP32HardwareInterface
     
     # CRITICAL: Physical robot parameters - MEASURE THESE PRECISELY!
     wheel_radius: 0.13      # meters - CALIBRATE THIS VALUE

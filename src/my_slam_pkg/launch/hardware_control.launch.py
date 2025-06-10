@@ -35,11 +35,11 @@ def generate_launch_description():
     
     robot_description = {'robot_description': robot_description_content}
     
-    # Configure controller manager - use different configs for real vs. simulated hardware
+    # Controller configuration
     controller_manager_config = os.path.join(
         pkg_share, 
         'config', 
-        'controllers.yaml' if LaunchConfiguration('use_fake_hardware') == 'true' else 'hardware_controllers.yaml'
+        'hardware_controllers.yaml'
     )
     
     # Start ROS2 Control node

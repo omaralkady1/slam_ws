@@ -21,9 +21,9 @@ find_package(diff_drive_controller REQUIRED)
 find_package(joint_state_broadcaster REQUIRED)
 find_package(twist_mux REQUIRED)
 find_package(nav2_msgs REQUIRED)
-find_package(controller_manager_msgs REQUIRED)  # For diagnostics
+find_package(controller_manager_msgs REQUIRED)
 
-# NEW: Add hardware interface dependencies
+# Hardware interface dependencies
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
@@ -50,9 +50,10 @@ install(PROGRAMS
   scripts/test_motors.py
   scripts/test_rplidar.py
   scripts/tf_monitor.py
-  "scripts/simple_motor_test.py manual"
+  scripts/simple_motor_test.py
   scripts/esp32_diagnostics.py
   scripts/slam_diagnostic.py
+  scripts/imu_enhanced_odometry_node.py  # NEW: IMU-enhanced odometry
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -63,7 +64,7 @@ install(DIRECTORY
   FILES_MATCHING PATTERN "*.py"
 )
 
-# NEW: Add hardware interface library
+# Add hardware interface library
 add_library(
   ${PROJECT_NAME}_hardware_interface
   SHARED
@@ -84,6 +85,7 @@ ament_target_dependencies(
   rclcpp_lifecycle
   geometry_msgs
   sensor_msgs
+  nav_msgs
 )
 
 # Install hardware interface library
